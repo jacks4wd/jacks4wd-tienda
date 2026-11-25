@@ -197,7 +197,10 @@ const VEHICULOS = [
     "marca": "Toyota",
     "modelo": "Tundra",
     "foto": "",
-    "generaciones": []
+    "generaciones": [
+      { "nombre": "Tundra 2007–2021", "anios": [2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021] },
+      { "nombre": "Tundra 2022 en adelante", "anios": [2022, 2023, 2024, 2025, 2026] }
+    ]
   },
   {
     "id": "veh-toyota-machito",
@@ -298,7 +301,10 @@ const VEHICULOS = [
     "marca": "Mitsubishi",
     "modelo": "L200",
     "foto": "",
-    "generaciones": []
+    "generaciones": [
+      { "nombre": "L200 2015–2025", "anios": [] },
+      { "nombre": "L200 2024 en adelante", "anios": [] }
+    ]
   },
   {
     "id": "veh-ford-ranger",
@@ -374,6 +380,30 @@ const VEHICULOS = [
     "id": "veh-dongfeng-pickup",
     "marca": "Dongfeng",
     "modelo": "Dongfeng Pick-up",
+    "foto": "",
+    "generaciones": []
+  },
+  {
+    "id": "veh-toyota-sequoia",
+    "marca": "Toyota",
+    "modelo": "Sequoia",
+    "foto": "",
+    "generaciones": [
+      { "nombre": "Sequoia hasta 2021", "anios": [] },
+      { "nombre": "Sequoia 2022 en adelante", "anios": [2022, 2023, 2024, 2025, 2026] }
+    ]
+  },
+  {
+    "id": "veh-chevrolet-tahoe",
+    "marca": "Chevrolet",
+    "modelo": "Tahoe",
+    "foto": "",
+    "generaciones": []
+  },
+  {
+    "id": "veh-ford-explorer",
+    "marca": "Ford",
+    "modelo": "Explorer",
     "foto": "",
     "generaciones": []
   }
@@ -2474,3 +2504,191 @@ const PRODUCTOS = [
     }
   }
 ];
+
+/* =====================================================================
+   Kits Dobinsons · Lista de precios XNEO (20-06-2025), precio Detal.
+   Se añaden una sola vez al catálogo (migración "migradoKitsDobinsons1"
+   en tienda.js) y quedan fijos al pulsar "Guardar en la nube".
+   Fuera por ahora: Sequoia/Tahoe blindada (N5) — irán con la selección
+   por peso/uso — y el 4Runner 3,75" (pendiente de confirmar generación).
+   El MRA Land Cruiser 300 ya existe en la nube ("Kit Suspension Dobinsons MRR").
+   ===================================================================== */
+const KITS_DOBINSONS = (() => {
+  // Vehículos con los nombres exactos del catálogo en la nube
+  const V = {
+    prado90:  [{ marca: 'Toyota', modelo: 'Land Cruiser Serie 90' }],
+    prado150: [{ marca: 'Toyota', modelo: 'Prado S150' }],
+    autana:   [{ marca: 'Toyota', modelo: 'Land Cruiser S80' }],
+    fortNac:  [{ marca: 'Toyota', modelo: 'Fortuner', genNombre: 'Fortuner 1era gen. (Ve)' }],
+    fortDub:  [{ marca: 'Toyota', modelo: 'Fortuner', genNombre: 'Fortuner 2da gen. ' }],
+    r4ta:     [{ marca: 'Toyota', modelo: '4Runner', genNombre: '4ta Generacion' }],
+    r5ta:     [{ marca: 'Toyota', modelo: '4Runner', genNombre: '5ta Generacion' }],
+    fj:       [{ marca: 'Toyota', modelo: 'FJ Cruiser' }],
+    hiluxNac: [{ marca: 'Toyota', modelo: 'Hilux', genNombre: 'Hilux 7ma generacion "Kavak (ve)"' }],
+    hiluxRevo:[{ marca: 'Toyota', modelo: 'Hilux', genNombre: 'Hilux 9na generacion (Revo-Adventure)' }],
+    hiluxGR:  [{ marca: 'Toyota', modelo: 'Hilux', genNombre: 'Hilux GR ' }],
+    tundraA:  [{ marca: 'Toyota', modelo: 'Tundra', genNombre: 'Tundra 2007–2021' }],
+    tundraB:  [{ marca: 'Toyota', modelo: 'Tundra', genNombre: 'Tundra 2022 en adelante' }],
+    tacoma:   [{ marca: 'Toyota', modelo: 'Tacoma' }],
+    roraima:  [{ marca: 'Toyota', modelo: 'Roraima Serie 200' }],
+    lc250:    [{ marca: 'Toyota', modelo: 'Land Cruiser LC250' }],
+    s71:      [{ marca: 'Toyota', modelo: 'Land Cruiser 70 series', genNombre: 'S71 "Machito" ' }],
+    s76:      [{ marca: 'Toyota', modelo: 'Land Cruiser 70 series', genNombre: 'S76' }],
+    s79:      [{ marca: 'Toyota', modelo: 'Land Cruiser 70 series', genNombre: 'S79' }],
+    sequoia:  [{ marca: 'Toyota', modelo: 'Sequoia' }],
+    sequoiaB: [{ marca: 'Toyota', modelo: 'Sequoia', genNombre: 'Sequoia 2022 en adelante' }],
+    kk:       [{ marca: 'Jeep', modelo: 'Cherokee', genNombre: 'Cherokee KK' }],
+    wk:       [{ marca: 'Jeep', modelo: 'Grand Cherokee', genNombre: '3era gen. WK / Commander' }],
+    wk2:      [{ marca: 'Jeep', modelo: 'Grand Cherokee', genNombre: '4ta gen WK2' }],
+    jl:       [{ marca: 'Jeep', modelo: 'Rubicon / Wrangler JL' }],
+    sport:    [{ marca: 'Mitsubishi', modelo: 'Montero / Pajero', genNombre: 'Montero / Pajero Sport' }],
+    limited:  [{ marca: 'Mitsubishi', modelo: 'Montero / Pajero', genNombre: 'Montero / Pajero Limited' }],
+    dakar:    [{ marca: 'Mitsubishi', modelo: 'Montero / Pajero', genNombre: 'Montero / Pajero  Dakar' }],
+    l200A:    [{ marca: 'Mitsubishi', modelo: 'L200', genNombre: 'L200 2015–2025' }],
+    l200B:    [{ marca: 'Mitsubishi', modelo: 'L200', genNombre: 'L200 2024 en adelante' }],
+    patrol:   [{ marca: 'Nissan', modelo: 'Patrol Y61' }],
+    tahoe:    [{ marca: 'Chevrolet', modelo: 'Tahoe' }],
+    explorer: [{ marca: 'Ford', modelo: 'Explorer' }],
+  };
+  V.r4y5 = [...V.r4ta, ...V.r5ta];
+  V.machitos = [...V.s71, ...V.s76, ...V.s79];
+
+  const SERIES = {
+    twintube: { nombre: 'Twintube', desc: 'línea Twintube, con amortiguadores de gas de doble tubo. Una opción confiable para el uso diario, la carretera y el off-road moderado.' },
+    ims:      { nombre: 'IMS', desc: 'línea IMS, con amortiguadores monotubo. Más control y mejor disipación del calor que la línea Twintube, para un uso exigente en trocha.' },
+    mra:      { nombre: 'MRA', desc: 'línea MRA, la gama más alta de Dobinsons en nuestra lista, pensada para el off-road más exigente y vehículos cargados.' },
+  };
+  const QR_PICKUP = 'Incluye 4 amortiguadores, espirales delanteros y tacos con tornillos en U.';
+  const QR_MACHITO = 'Incluye 5 amortiguadores, espirales delanteros, bujes, correctores y gemelos extendidos.';
+
+  // [serie, ¿medio kit Quick Ride?, nombre del vehículo, altura, precio Detal (USD), compatibles]
+  const FILAS = [
+    // ---- Twintube · kit completo ----
+    ['twintube', 0, 'Merú / Prado', '', 1400, V.prado90],
+    ['twintube', 0, 'Prado Serie 150', '', 1400, V.prado150],
+    ['twintube', 0, '3" Autana Serie 80', '3"', 1910, V.autana],
+    ['twintube', 0, '3" HD Autana Serie 80', '3"', 1783, V.autana],
+    ['twintube', 0, '4" Autana Serie 80', '4"', 2099, V.autana],
+    ['twintube', 0, '6" Autana Serie 80', '6"', 2099, V.autana],
+    ['twintube', 0, 'Fortuner Nacional', '', 1400, V.fortNac],
+    ['twintube', 0, 'Fortuner Dubai', '', 1400, V.fortDub],
+    ['twintube', 0, '4Runner 4ta Generación', '', 1400, V.r4ta],
+    ['twintube', 0, '4Runner 5ta Generación', '', 1400, V.r5ta],
+    ['twintube', 0, 'FJ Cruiser', '', 1400, V.fj],
+    ['twintube', 0, 'Hilux Nacional (parabólica)', '', 2206, V.hiluxNac],
+    ['twintube', 0, 'Hilux Revo (parabólica)', '', 2320, V.hiluxRevo],
+    ['twintube', 0, 'Tundra 2007-2021', '', 2680, V.tundraA],
+    ['twintube', 0, 'Cherokee Liberty KK', '', 1400, V.kk],
+    ['twintube', 0, 'Grand Cherokee WK', '', 1400, V.wk],
+    ['twintube', 0, 'Jeep Commander', '', 1400, V.wk],
+    ['twintube', 0, 'L200 2015-2025', '', 2235, V.l200A],
+    ['twintube', 0, 'Montero Dakar', '', 2060, V.dakar],
+    ['twintube', 0, 'Montero Sport', '', 1400, V.sport],
+    ['twintube', 0, 'Machito Serie 71', '', 2470, V.s71],
+    ['twintube', 0, 'Machito Serie 76 (4 puertas)', '', 3370, V.s76],
+    ['twintube', 0, 'Hembrita Serie 78/79 (parabólica)', '', 3090, V.s79],
+    ['twintube', 0, '3" Nissan Patrol', '3"', 1910, V.patrol],
+    ['twintube', 0, '4" Nissan Patrol', '4"', 2099, V.patrol],
+    ['twintube', 0, '6" Nissan Patrol', '6"', 2099, V.patrol],
+    ['twintube', 0, 'Roraima Serie 200', '', 1456, V.roraima],
+    ['twintube', 0, 'Tahoe', '', 1856, V.tahoe],
+    ['twintube', 0, 'Explorer 2012+', '', 1856, V.explorer],
+    ['twintube', 0, 'Sequoia', '', 1735, V.sequoia],
+    // ---- IMS · kit completo ----
+    ['ims', 0, '4Runner', '', 2195, V.r4y5],
+    ['ims', 0, 'Fortuner Nacional', '', 2195, V.fortNac],
+    ['ims', 0, 'FJ Cruiser', '', 2195, V.fj],
+    ['ims', 0, 'Merú / Prado', '', 2195, V.prado90],
+    ['ims', 0, 'Fortuner Dubai', '', 2195, V.fortDub],
+    ['ims', 0, 'Prado Serie 150', '', 2195, V.prado150],
+    ['ims', 0, 'Hilux Nacional (parabólica)', '', 3060, V.hiluxNac],
+    ['ims', 0, 'Hilux Revo (parabólica)', '', 3170, V.hiluxRevo],
+    ['ims', 0, 'Hilux GR (parabólica)', '', 3290, V.hiluxGR],
+    ['ims', 0, 'Tundra 2022+', '', 2545, V.tundraB],
+    ['ims', 0, 'Roraima Serie 200', '', 2490, V.roraima],
+    ['ims', 0, 'Land Cruiser Serie 250', '', 2670, V.lc250],
+    ['ims', 0, 'Machito Serie 71', '', 3430, V.s71],
+    ['ims', 0, 'Machito Serie 76 (4 puertas)', '', 4320, V.s76],
+    ['ims', 0, 'Hembrita Serie 78/79 (parabólica)', '', 3830, V.s79],
+    ['ims', 0, 'Grand Cherokee WK2', '', 2460, V.wk2],
+    ['ims', 0, 'Montero Limited', '', 2195, V.limited],
+    ['ims', 0, '3" Autana Serie 80', '3"', 2860, V.autana],
+    ['ims', 0, '4" Autana Serie 80', '4"', 2980, V.autana],
+    ['ims', 0, '6" Autana Serie 80', '6"', 2980, V.autana],
+    // ---- MRA · kit completo (el de Land Cruiser 300 ya existe en la nube) ----
+    ['mra', 0, '4Runner', '', 3670, V.r4y5],
+    ['mra', 0, 'FJ Cruiser', '', 3670, V.fj],
+    ['mra', 0, 'Fortuner Nacional', '', 3670, V.fortNac],
+    ['mra', 0, 'Fortuner Dubai', '', 3670, V.fortDub],
+    ['mra', 0, 'Merú / Prado', '', 3670, V.prado90],
+    ['mra', 0, '3" Autana Serie 80', '3"', 4880, V.autana],
+    ['mra', 0, '4" Autana Serie 80', '4"', 4995, V.autana],
+    ['mra', 0, '6" Autana Serie 80', '6"', 4995, V.autana],
+    ['mra', 0, 'Hilux Nacional (parabólica)', '', 4475, V.hiluxNac],
+    ['mra', 0, 'Hilux Revo (parabólica)', '', 4590, V.hiluxRevo],
+    ['mra', 0, 'Hilux GR (parabólica)', '', 5075, V.hiluxGR],
+    ['mra', 0, 'Tundra 2022+', '', 4135, V.tundraB],
+    ['mra', 0, 'Roraima Serie 200', '', 4020, V.roraima],
+    ['mra', 0, 'Land Cruiser Serie 250', '', 4080, V.lc250],
+    ['mra', 0, 'Sequoia 2022+', '', 4080, V.sequoiaB],
+    ['mra', 0, 'Machito Serie 71', '', 5075, V.s71],
+    ['mra', 0, 'Machito Serie 76 (4 puertas)', '', 5970, V.s76],
+    ['mra', 0, 'Hembrita Serie 78/79 (parabólica)', '', 5740, V.s79],
+    ['mra', 0, 'L200 2024+', '', 4590, V.l200B],
+    ['mra', 0, 'L200 2015-2025', '', 4500, V.l200A],
+    ['mra', 0, 'Jeep Gladiator JT', '', 5235, V.jl], // el Gladiator JT comparte plataforma con el JL
+    ['mra', 0, 'Jeep Rubicon JL', '', 5235, V.jl],
+    ['mra', 0, '3" Nissan Patrol', '3"', 4360, V.patrol],
+    ['mra', 0, '4" Nissan Patrol', '4"', 4995, V.patrol],
+    ['mra', 0, '6" Nissan Patrol', '6"', 4995, V.patrol],
+    // ---- Quick Ride (medio kit) · Twintube ----
+    ['twintube', 1, 'Hilux Revo', '', 1270, V.hiluxRevo],
+    ['twintube', 1, 'Hilux Nacional', '', 1270, V.hiluxNac],
+    ['twintube', 1, 'Tundra 2007-2021', '', 1435, V.tundraA],
+    ['twintube', 1, 'Machito S71/76/78/79', '', 1610, V.machitos],
+    ['twintube', 1, 'Tacoma', '', 1270, V.tacoma],
+    ['twintube', 1, 'L200 2024+', '', 1270, V.l200B],
+    ['twintube', 1, 'L200 2015-2025', '', 1270, V.l200A],
+    // ---- Quick Ride (medio kit) · IMS ----
+    ['ims', 1, 'Hilux Nacional', '', 2190, V.hiluxNac],
+    ['ims', 1, 'Hilux Revo', '', 2190, V.hiluxRevo],
+    ['ims', 1, 'Hilux GR', '', 2320, V.hiluxGR],
+    ['ims', 1, 'Tundra 2007-2021', '', 2465, V.tundraA],
+    ['ims', 1, 'L200 2015-2025', '', 2190, V.l200A],
+    ['ims', 1, 'Tacoma', '', 2190, V.tacoma],
+    ['ims', 1, 'Machito S71/76/78/79', '', 2560, V.machitos],
+    // ---- Quick Ride (medio kit) · MRA ----
+    ['mra', 1, 'Hilux Nacional', '', 3530, V.hiluxNac],
+    ['mra', 1, 'Hilux Revo', '', 3530, V.hiluxRevo],
+    ['mra', 1, 'Hilux GR', '', 4275, V.hiluxGR],
+    ['mra', 1, 'Tundra 2007-2021', '', 4100, V.tundraA],
+    ['mra', 1, 'Tacoma', '', 3530, V.tacoma],
+    ['mra', 1, 'L200 2024+', '', 3530, V.l200B],
+    ['mra', 1, 'L200 2015-2025', '', 3530, V.l200A],
+    ['mra', 1, 'Machito S71/76/78/79', '', 3860, V.machitos],
+  ];
+
+  const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/"/g, 'in').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  return FILAS.map(([serie, medio, veh, altura, precio, compatibles]) => {
+    const s = SERIES[serie];
+    const esMachito = /machito/i.test(veh);
+    return {
+      id: `dob-${serie}-${medio ? 'qr-' : ''}${slug(veh)}`,
+      nombre: medio
+        ? `Medio Kit Quick Ride ${s.nombre} ${veh}`
+        : `Kit de Suspensión ${s.nombre} ${veh}`,
+      categoria: 'suspension',
+      subcategoria: serie,
+      marca: 'Dobinsons',
+      altura,
+      precio,
+      descripcion: medio
+        ? `Medio kit de suspensión Dobinsons Quick Ride, ${s.desc} ${esMachito ? QR_MACHITO : QR_PICKUP}`
+        : `Kit completo de suspensión Dobinsons, ${s.desc}`,
+      foto: '',
+      compatibles: compatibles.map((c) => ({ ...c, anios: [] })),
+    };
+  });
+})();

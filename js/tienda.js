@@ -552,23 +552,20 @@
           <span class="build-marca">${esc(v.marca)}</span>
           <span class="build-modelo">${esc(v.modelo)}</span>
         </div>
-        <div class="build-drawer">
-          <span class="build-instruccion">${gens.length ? 'Selecciona año / generación:' : 'Suspensión disponible:'}</span>
-          <div class="build-gens">
-            ${gens.length
-              ? gens.map((g, gi) => {
-                const txtGen = g.nombre.toLowerCase().includes(v.modelo.toLowerCase()) ? g.nombre : `${v.modelo} · ${g.nombre}`;
-                return `
-                <button type="button" class="build-gen-btn" data-marca="${esc(v.marca)}" data-modelo="${esc(v.modelo)}" data-gen="${gi}">
-                  <span>${esc(txtGen)}</span>
-                  <span aria-hidden="true">${SVG_ICONOS.arrowRight}</span>
-                </button>`;
-              }).join('')
-              : `<button type="button" class="build-gen-btn" data-marca="${esc(v.marca)}" data-modelo="${esc(v.modelo)}" data-gen="-1">
-                  <span>Ver kits para ${esc(v.modelo)}</span>
-                  <span aria-hidden="true">${SVG_ICONOS.arrowRight}</span>
-                </button>`}
-          </div>
+        <div class="build-drawer" aria-label="Año o generación de ${esc(v.marca)} ${esc(v.modelo)}">
+          ${gens.length
+            ? gens.map((g, gi) => {
+              const anios = rangoAnios(g.anios);
+              return `
+              <button type="button" class="build-gen-btn" data-marca="${esc(v.marca)}" data-modelo="${esc(v.modelo)}" data-gen="${gi}">
+                <span class="build-gen-nombre">${esc(g.nombre)}</span>
+                ${anios ? `<span class="build-gen-anios">${esc(anios)}</span>` : `<span class="build-gen-flecha" aria-hidden="true">${SVG_ICONOS.arrowRight}</span>`}
+              </button>`;
+            }).join('')
+            : `<button type="button" class="build-gen-btn" data-marca="${esc(v.marca)}" data-modelo="${esc(v.modelo)}" data-gen="-1">
+                <span class="build-gen-nombre">Ver kits</span>
+                <span class="build-gen-flecha" aria-hidden="true">${SVG_ICONOS.arrowRight}</span>
+              </button>`}
         </div>
       </article>`;
     }).join('') || '<p class="vacio">Aún no hay vehículos configurados.</p>';
@@ -637,8 +634,16 @@
                 <span>Todas</span><span class="build-marca-cnt">${vehs.length}</span>
               </button>
             </div>` : ''}
-            <div class="build-grid" id="vehiculos-home">
-              ${htmlTarjetasVeh(vehsIniciales)}
+            <div class="build-carrusel">
+              <button type="button" class="build-flecha build-flecha-prev" id="veh-prev" aria-label="Vehículos anteriores" aria-controls="vehiculos-home">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <div class="build-track" id="vehiculos-home" role="region" aria-label="Vehículos" tabindex="0">
+                ${htmlTarjetasVeh(vehsIniciales)}
+              </div>
+              <button type="button" class="build-flecha build-flecha-next" id="veh-next" aria-label="Más vehículos" aria-controls="vehiculos-home">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
             </div>
           </section>
         </div>
@@ -661,11 +666,48 @@
         marcaVehActiva = b.dataset.vmarca || '';
         $$('#veh-marcas-tabs .build-marca-tab').forEach((x) => x.classList.toggle('on', x === b));
         const filtrados = marcaVehActiva ? vehs.filter((v) => v.marca === marcaVehActiva) : vehs;
-        $('#vehiculos-home').innerHTML = htmlTarjetasVeh(filtrados);
+        const track = $('#vehiculos-home');
+        track.innerHTML = htmlTarjetasVeh(filtrados);
+        track.scrollLeft = 0;
+        actualizarFlechasVeh();
       };
     }
 
-    const gridVeh = $('#vehiculos-home');
+    // ---- Carrusel de vehículos: flechas que avanzan una "página" visible ----
+    const trackVeh = $('#vehiculos-home');
+    const btnPrev = $('#veh-prev');
+    const btnNext = $('#veh-next');
+    function actualizarFlechasVeh() {
+      if (!trackVeh) return;
+      const max = trackVeh.scrollWidth - trackVeh.clientWidth;
+      const hayDesborde = max > 4;
+      trackVeh.parentElement.classList.toggle('con-desborde', hayDesborde);
+      btnPrev.disabled = !hayDesborde || trackVeh.scrollLeft <= 4;
+      btnNext.disabled = !hayDesborde || trackVeh.scrollLeft >= max - 4;
+    }
+    if (trackVeh) {
+      const paso = (dir) => {
+        const card = trackVeh.querySelector('.build-card');
+        const gap = parseFloat(getComputedStyle(trackVeh).columnGap) || 0;
+        const ancho = card ? card.getBoundingClientRect().width + gap : trackVeh.clientWidth;
+        const visibles = Math.max(1, Math.floor((trackVeh.clientWidth + gap) / ancho));
+        trackVeh.scrollBy({ left: dir * ancho * visibles, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      };
+      btnPrev.onclick = () => paso(-1);
+      btnNext.onclick = () => paso(1);
+      let raf = 0;
+      trackVeh.addEventListener('scroll', () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(actualizarFlechasVeh);
+      }, { passive: true });
+      if (window.__vehResize) window.removeEventListener('resize', window.__vehResize);
+      window.__vehResize = actualizarFlechasVeh;
+      window.addEventListener('resize', actualizarFlechasVeh, { passive: true });
+      trackVeh.querySelectorAll('img').forEach((im) => im.addEventListener('load', actualizarFlechasVeh, { once: true }));
+      actualizarFlechasVeh();
+    }
+
+    const gridVeh = trackVeh;
     if (gridVeh) {
       gridVeh.onclick = (e) => {
         const btn = e.target.closest('.build-gen-btn');
@@ -1177,15 +1219,18 @@
       const porVeh = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && productoCompatibleConVeh(m, veh));
       if (porVeh) return porVeh;
     }
+    const norm = (s) => String(s || '').trim().toLowerCase();
     const fuentes = prod ? [prod] : prodsCarrito;
     for (const f of fuentes) {
       for (const comp of (f.compatibles || [])) {
-        const match = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && m.compatibles.some((mc) => mc.marca === comp.marca && mc.modelo === comp.modelo));
+        const match = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && m.compatibles.some((mc) =>
+          mc.marca === comp.marca && mc.modelo === comp.modelo &&
+          (!mc.genNombre || !comp.genNombre || norm(mc.genNombre) === norm(comp.genNombre))));
         if (match) return match;
       }
     }
-    // Si hay una meseta universal (sin restricción de vehículos), usarla
-    return mesetas.find((m) => !Array.isArray(m.compatibles) || !m.compatibles.length) || null;
+    // Sin meseta asociada al vehículo no hay sugerencia: muchos modelos no usan brazos de control superiores.
+    return null;
   }
 
   function evaluarPopupMesetas(ctx = {}) {
@@ -1210,6 +1255,7 @@
     if (_mesetasOmitidas.has(claveOmitir)) return;
 
     const meseta = buscarMesetaSugerida({ prod, veh, prodsCarrito: prodsSusp });
+    if (!meseta) return; // solo se sugiere en vehículos que tienen mesetas cargadas
     const vehRef = veh
       ? etiquetaVehiculo(veh.marca, veh.modelo, veh.genNombre)
       : (prod?.compatibles?.length === 1 ? `${prod.compatibles[0].marca} ${prod.compatibles[0].modelo}` : '');
@@ -1416,6 +1462,20 @@
         </div>
         <p id="admin-estado" class="hint"></p>
 
+        <nav class="admin-rapido" aria-label="Acciones rápidas">
+          <div class="admin-rapido-grupo">
+            <span class="admin-rapido-label">Añadir</span>
+            ${categorias().map((c) => `<button type="button" class="btn small" data-nuevo-cat="${esc(c.id)}">+ ${esc(c.nombre)}</button>`).join('')}
+          </div>
+          <div class="admin-rapido-grupo">
+            <span class="admin-rapido-label">Ir a</span>
+            <a href="#" class="admin-rapido-link" data-ir="sec-productos">Productos</a>
+            <a href="#" class="admin-rapido-link" data-ir="sec-vehiculos">Vehículos</a>
+            <a href="#" class="admin-rapido-link" data-ir="sec-marcas">Marcas</a>
+            <a href="#" class="admin-rapido-link" data-ir="sec-categorias">Categorías</a>
+          </div>
+        </nav>
+
         <section class="seccion">
           <div class="seccion-head"><h2>Configuración de la página</h2></div>
           <div class="card" style="padding:16px">
@@ -1467,7 +1527,7 @@
           <div style="display:flex;flex-direction:column;gap:12px" id="lista-faqs"></div>
         </section>
 
-        <section class="seccion">
+        <section class="seccion" id="sec-categorias">
           <div class="seccion-head"><h2>Categorías</h2><button class="btn ghost" id="cat-nueva">+ Nueva categoría</button></div>
           <div class="grid" id="lista-categorias"></div>
         </section>
@@ -1478,18 +1538,18 @@
           <div class="grid" id="lista-merch-tipos"></div>
         </section>
 
-        <section class="seccion">
+        <section class="seccion" id="sec-marcas">
           <div class="seccion-head"><h2>Marcas</h2><button class="btn ghost" id="marca-nueva">+ Nueva marca</button></div>
           <div class="grid" id="lista-marcas"></div>
         </section>
 
-        <section class="seccion">
+        <section class="seccion" id="sec-vehiculos">
           <div class="seccion-head"><h2>Vehículos</h2><button class="btn ghost" id="veh-nuevo">+ Nuevo vehículo</button></div>
           <p class="hint" style="margin:-6px 0 12px">Tip rápido: haz clic o arrastra una foto directamente sobre el recuadro de cualquier vehículo para cambiar su imagen sin abrir el editor.</p>
           <div class="grid" id="lista-vehiculos"></div>
         </section>
 
-        <section class="seccion">
+        <section class="seccion" id="sec-productos">
           <div class="seccion-head"><h2>Productos</h2><button class="btn ghost" id="prod-nuevo">+ Nuevo producto</button></div>
           <div class="card" style="padding:16px;margin-bottom:16px" id="lote-foto-card">
             <div style="font-weight:700;font-size:.95rem;margin-bottom:6px">Carga rápida de foto por línea o marca</div>
@@ -1634,6 +1694,12 @@
       $('#marca-nueva').onclick = () => editarMarca(null);
       $('#veh-nuevo').onclick = () => editarVehiculo(null);
       $('#prod-nuevo').onclick = () => editarProducto(null);
+      // Barra superior: nuevo producto con la categoría ya elegida, y saltos a cada sección
+      $$('[data-nuevo-cat]').forEach((b) => (b.onclick = () => editarProducto(null, { categoria: b.dataset.nuevoCat })));
+      $$('[data-ir]').forEach((a) => (a.onclick = (e) => {
+        e.preventDefault();
+        document.getElementById(a.dataset.ir)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }));
       $('#cat-nueva').onclick = () => {
         const c = categorias();
         const id = 'cat' + Date.now().toString(36);
@@ -2103,8 +2169,11 @@
   }
 
   // ---------- Editor de producto ----------
-  function editarProducto(id) {
-    const p = id ? productos().find((x) => x.id === id) : { id: uid(), nombre: '', categoria: 'suspension', marca: marcas()[0]?.nombre || '', altura: '', precio: '', descripcion: '', foto: '', compatibles: [], opciones: null };
+  function editarProducto(id, preset = {}) {
+    const catNueva = preset.categoria || 'suspension';
+    // La merch nueva arranca con la marca del taller; el resto con la primera marca de la lista
+    const marcaNueva = (catNueva === 'merch' && marcas().find((m) => /jacks4wd/i.test(m.nombre))?.nombre) || marcas()[0]?.nombre || '';
+    const p = id ? productos().find((x) => x.id === id) : { id: uid(), nombre: '', categoria: catNueva, marca: marcaNueva, altura: '', precio: '', descripcion: '', foto: '', compatibles: [], opciones: null };
     const nuevo = !id;
     const catOpciones = categorias().map((c) => `<option ${c.id === p.categoria ? 'selected' : ''} value="${c.id}">${esc(c.nombre)}</option>`).join('');
     const marcaOpciones = marcas().map((m) => `<option ${m.nombre === p.marca ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('');
@@ -2487,6 +2556,36 @@
       });
 
       cfg.migradoKitsOME1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez): kits Dobinsons Twintube, IMS y MRA (lista XNEO 20-06-2025, precio Detal).
+    // Solo añade lo que falta por id; no toca productos que el admin ya haya editado o borrado
+    // después de guardar, porque la marca queda en la nube con "Guardar en la nube".
+    if (!cfg.migradoKitsDobinsons1 && typeof KITS_DOBINSONS !== 'undefined') {
+      const catSusp = (cfg.categorias || []).find((c) => c.id === 'suspension');
+      if (catSusp) {
+        catSusp.subcategorias = Array.isArray(catSusp.subcategorias) ? catSusp.subcategorias : [];
+        [
+          { id: 'twintube', nombre: 'Twintube' },
+          { id: 'ims', nombre: 'IMS' },
+          { id: 'mra', nombre: 'MRA' },
+        ].forEach((linea) => {
+          if (!catSusp.subcategorias.some((s) => s.id === linea.id)) catSusp.subcategorias.push({ ...linea });
+        });
+      }
+      catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : [];
+      // El kit MRR/MRA de Land Cruiser 300 que ya estaba cargado pasa a la línea MRA
+      catalogo.productos.forEach((p) => {
+        if (p.marca === 'Dobinsons' && !p.subcategoria && /\bMR[RA]\b/i.test(p.nombre || '')) p.subcategoria = 'mra';
+      });
+      const idsExistentes = new Set(catalogo.productos.map((p) => p.id));
+      KITS_DOBINSONS.forEach((k) => {
+        if (!idsExistentes.has(k.id)) {
+          catalogo.productos.push({ ...k, compatibles: k.compatibles.map((c) => ({ ...c, anios: [...(c.anios || [])] })) });
+        }
+      });
+      cfg.migradoKitsDobinsons1 = true;
       guardarCatalogoLocal();
     }
 
