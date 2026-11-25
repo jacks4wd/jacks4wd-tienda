@@ -1,5 +1,5 @@
 /* =====================================================================
-   Jacks4WD · Catálogo inicial de la tienda (datos de arranque)
+   Jacks4WD · Configuración base de la tienda (marcas y vehículos de arranque)
    ===================================================================== */
 
 const TIENDA_CONFIG = {
@@ -11,6 +11,9 @@ const TIENDA_CONFIG = {
   descuentoCliente: 10,
   modoPrivadoIG: true,
   claveInvitado: 'jacks4wd',
+  // Dirección pública de la tienda: base de los enlaces que se copian (invitado, cliente).
+  // Al lanzar con dominio propio, cámbiala por 'https://tienda.jacks4wd.com/'.
+  urlPublica: 'https://app.jacks4wd.com/jacks4wd-tienda/',
 };
 
 const CONFIG_INICIAL = {

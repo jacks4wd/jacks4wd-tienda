@@ -1701,7 +1701,10 @@
       if (btnCopiarInv) {
         btnCopiarInv.onclick = () => {
           const clave = encodeURIComponent((config().claveInvitado || 'jacks4wd').trim());
-          const base = (location.origin && location.origin !== 'null' ? location.origin + location.pathname : 'https://tienda.jacks4wd.com/');
+          // Abierta desde internet: su propia dirección. Desde un archivo (file://) o pruebas locales:
+          // la dirección pública configurada, nunca una ruta de la computadora.
+          const enLinea = /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
+          const base = enLinea ? location.origin + location.pathname : (CFG?.urlPublica || 'https://app.jacks4wd.com/jacks4wd-tienda/');
           const link = `${base}?invitado=${clave}`;
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(link).then(() => toast('Link de invitado copiado')).catch(() => prompt('Copia este link de invitado:', link));
