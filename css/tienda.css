@@ -1525,6 +1525,31 @@ main.es-inicio + .footer {
   justify-content: center;
 }
 .detalle .foto img { width: 100%; height: 100%; object-fit: contain; background: #ffffff; }
+
+/* Galería de la ficha: miniaturas bajo la foto grande */
+.detalle-galeria { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.detalle-miniaturas {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+.detalle-mini {
+  flex: none;
+  width: 72px;
+  height: 56px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-sm);
+  cursor: pointer;
+  transition: border-color var(--trans);
+}
+.detalle-mini img { width: 100%; height: 100%; object-fit: contain; }
+.detalle-mini:hover { border-color: var(--linea-fuerte); }
+.detalle-mini.on { border: 2px solid var(--primary); padding: 3px; }
+.detalle-mini:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .detalle h1 { font-size: 2.1rem; margin: 0 0 8px; }
 .detalle-specs {
   display: flex;
@@ -1776,10 +1801,14 @@ main.es-inicio + .footer {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.mesetas-cerrar {
+.mesetas-controles {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: flex;
+  gap: 6px;
+}
+.mesetas-cerrar {
   width: 30px;
   height: 30px;
   border-radius: var(--radio-sm);
@@ -1797,11 +1826,44 @@ main.es-inicio + .footer {
   border-color: var(--texto);
   color: var(--texto);
 }
+.mesetas-cerrar:focus-visible,
+.mesetas-pestana:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Pestaña compacta cuando la sugerencia está minimizada */
+.mesetas-pestana {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto);
+  cursor: pointer;
+}
+.mesetas-pestana-flecha { color: var(--muted); }
+.mesetas-popup.minimizado {
+  width: auto;
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.mesetas-popup.minimizado .mesetas-pestana { display: inline-flex; }
+.mesetas-popup.minimizado .mesetas-cuerpo { display: none; }
+.mesetas-popup.minimizado:hover { border-color: var(--primary); }
+
 .mesetas-encabezado {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 32px;
+  padding-right: 70px;
   font-family: var(--font-display);
   font-size: 1.08rem;
   font-weight: 800;
@@ -1974,6 +2036,56 @@ dialog#modal::backdrop { background: rgba(0,0,0,.58); }
 .foto-box.soltar { border-color: var(--primary); background: var(--primary-tint); }
 .foto-box img { max-height: 140px; max-width: 100%; object-fit: contain; border-radius: var(--radio-sm); }
 .foto-box .sin-foto { background: transparent; color: var(--muted); height: auto; }
+
+/* Admin: tira de fotos del producto (principal + adicionales) */
+.fotos-galeria-admin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fotos-galeria-admin:empty { display: none; }
+.foto-mini {
+  position: relative;
+  width: 84px;
+  height: 66px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-sm);
+}
+.foto-mini.principal { border: 2px solid var(--primary); padding: 3px; }
+.foto-mini img { width: 100%; height: 100%; object-fit: contain; }
+.foto-mini-etiqueta {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: .68rem;
+  font-weight: 700;
+}
+.foto-mini-btn {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--linea);
+  border-radius: 999px;
+  background: rgba(255,255,255,.95);
+  color: #141517;
+  font-size: .74rem;
+  cursor: pointer;
+}
+.foto-mini-btn.quitar { left: auto; right: 3px; color: var(--bad); }
+.foto-mini-btn:hover { border-color: var(--texto); }
+.foto-mini-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .pasos-foto { font-size: .84rem; color: var(--muted); line-height: 1.5; }
 
 /* ===================== FOOTER ===================== */

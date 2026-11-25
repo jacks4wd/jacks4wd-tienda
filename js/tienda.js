@@ -190,10 +190,10 @@
       const subs = c.subcategorias || [];
       const ms = marcasSuspension();
       return ms.map((m) => {
-        const esOME = m.toLowerCase().includes('old man emu');
-        const subLinks = esOME && subs.length
-          ? subs.map((s) => `<a class="sub" href="${hrefCat('suspension', 'marca=' + encodeURIComponent(m) + '&sub=' + encodeURIComponent(s.id))}">${esc(s.nombre)}</a>`).join('')
-          : '';
+        // Cada marca muestra solo sus propias líneas (OME: Nitrocharger/MT64/BP-51; Dobinsons: Twintube/IMS/MRA)
+        const subsMarca = subs.filter((s) => productos().some((p) => p.categoria === 'suspension' && p.marca === m && p.subcategoria === s.id));
+        const subLinks = subsMarca
+          .map((s) => `<a class="sub" href="${hrefCat('suspension', 'marca=' + encodeURIComponent(m) + '&sub=' + encodeURIComponent(s.id))}">${esc(s.nombre)}</a>`).join('');
         return `<a href="${hrefCat('suspension', 'marca=' + encodeURIComponent(m))}">${esc(m)}</a>${subLinks}`;
       }).join('');
     }
@@ -365,6 +365,12 @@
     if (catId === 'merch') return SVG_ICONOS.shirt;
     if (catId === 'suspension') return SVG_ICONOS.shock;
     return SVG_ICONOS.gear;
+  }
+  // Varias fotos por producto: p.foto es la principal (tarjetas, carrito, pop-up) y p.fotosExtra las demás
+  const MAX_FOTOS = 8;
+  function fotosDe(p) {
+    const extra = Array.isArray(p?.fotosExtra) ? p.fotosExtra.filter(Boolean) : [];
+    return [p?.foto, ...extra].filter(Boolean).filter((f, i, a) => a.indexOf(f) === i);
   }
   function fotoHTML(p) {
     if (p.foto) return `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy">`;
@@ -862,7 +868,6 @@
       activarBarraVehiculo(vehActivo, (nuevoVeh) => {
         vehActivo = nuevoVeh;
         renderTodo();
-        if (categoria === 'suspension' && vehActivo?.modelo) evaluarPopupMesetas({ modo: 'catalogo', veh: vehActivo });
       }, { auto: true });
     };
 
@@ -1049,7 +1054,7 @@
     };
 
     renderTodo();
-    if (categoria === 'suspension' && vehActivo) evaluarPopupMesetas({ modo: 'catalogo', veh: vehActivo });
+    // La sugerencia de mesetas ya no salta al elegir vehículo: aparece al elegir un kit (ficha o carrito).
   }
 
   // ===================== MERCH (menú lateral por tipo + Hombres/Mujeres) =====================
@@ -1158,7 +1163,16 @@
     $('#vista').innerHTML = `
       <nav class="breadcrumb"><a href="#/">Inicio</a><span>›</span><a href="${p.categoria === 'merch' ? '#/catalogo/merch' : urlCatalogoConVeh(p.categoria, vehActivo)}">${esc(cat?.nombre || p.categoria)}</a><span>›</span><strong>${esc(p.nombre)}</strong></nav>
       <div class="detalle seccion">
-        <div class="foto">${fotoHTML(p)}</div>
+        <div class="detalle-galeria">
+          <div class="foto" id="detalle-foto-principal">${fotoHTML(p)}</div>
+          ${fotosDe(p).length > 1 ? `
+          <div class="detalle-miniaturas" role="group" aria-label="Fotos del producto">
+            ${fotosDe(p).map((src, i) => `
+              <button type="button" class="detalle-mini ${i === 0 ? 'on' : ''}" data-foto-idx="${i}" aria-label="Ver foto ${i + 1} de ${fotosDe(p).length}" aria-pressed="${i === 0}">
+                <img src="${esc(src)}" alt="" loading="lazy">
+              </button>`).join('')}
+          </div>` : ''}
+        </div>
         <div>
           <h1>${esc(p.nombre)}</h1>
           ${(p.marca || subNom || p.altura || esCompatVeh) ? `<div class="detalle-specs">
@@ -1175,6 +1189,18 @@
         </div>
       </div>`;
     $('#btn-add').onclick = () => agregarAlCarrito(p.id, $('#sel-opcion')?.value);
+    // Galería: las miniaturas cambian la foto grande
+    const listaFotos = fotosDe(p);
+    $$('#vista .detalle-mini').forEach((b) => (b.onclick = () => {
+      const i = Number(b.dataset.fotoIdx);
+      const img = $('#detalle-foto-principal img');
+      if (img && listaFotos[i]) img.src = listaFotos[i];
+      $$('#vista .detalle-mini').forEach((x) => {
+        const on = x === b;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-pressed', String(on));
+      });
+    }));
     if (p.categoria === 'suspension' && !/con\s+mesetas/i.test(p.nombre || '')) {
       evaluarPopupMesetas({ modo: 'producto', prod: p, veh: vehActivo });
     }
@@ -1227,6 +1253,10 @@
   }
 
   const _mesetasOmitidas = new Set();
+  // Minimizado: se recuerda durante la visita para no tapar la página en cada vista
+  const MESETAS_MIN_KEY = 'jacks4wd-mesetas-min';
+  const mesetasMinimizado = () => { try { return sessionStorage.getItem(MESETAS_MIN_KEY) === '1'; } catch { return false; } };
+  const guardarMesetasMinimizado = (v) => { try { v ? sessionStorage.setItem(MESETAS_MIN_KEY, '1') : sessionStorage.removeItem(MESETAS_MIN_KEY); } catch { /* sin almacenamiento */ } };
   function cerrarPopupMesetas() {
     const el = document.getElementById ? document.getElementById('mesetas-popup') : null;
     if (el && typeof el.remove === 'function') el.remove();
@@ -1240,6 +1270,10 @@
   function buscarMesetaSugerida({ prod = null, veh = null, prodsCarrito = [] } = {}) {
     const mesetas = productos().filter((p) => p.categoria === 'partes' && p.subcategoria === 'mesetas');
     if (!mesetas.length) return null;
+    // El vehículo activo solo cuenta si el kit elegido (o alguno del carrito) es para ese vehículo;
+    // si no, se sugiere la meseta del vehículo del propio kit.
+    const kits = prod ? [prod] : prodsCarrito;
+    if (veh && kits.length && !kits.some((k) => Array.isArray(k.compatibles) && k.compatibles.length && productoCompatibleConVeh(k, veh))) veh = null;
     if (veh) {
       const porVeh = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && productoCompatibleConVeh(m, veh));
       if (porVeh) return porVeh;
@@ -1288,11 +1322,22 @@
     if (!document.body || !document.createElement) return;
     const caja = document.createElement('aside');
     caja.id = 'mesetas-popup';
-    caja.className = 'mesetas-popup';
+    caja.className = 'mesetas-popup' + (mesetasMinimizado() ? ' minimizado' : '');
     caja.setAttribute('role', 'dialog');
     caja.setAttribute('aria-label', 'Sugerencia de brazos de control superiores');
     caja.innerHTML = `
-      <button type="button" class="mesetas-cerrar" id="mesetas-cerrar" aria-label="Cerrar sugerencia">✕</button>
+      <button type="button" class="mesetas-pestana" id="mesetas-expandir" aria-expanded="false" aria-controls="mesetas-cuerpo">
+        <span class="mesetas-icono">${SVG_ICONOS.wrench}</span>
+        <span>Mesetas recomendadas</span>
+        <svg class="mesetas-pestana-flecha" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+      </button>
+      <div class="mesetas-cuerpo" id="mesetas-cuerpo">
+      <div class="mesetas-controles">
+        <button type="button" class="mesetas-cerrar" id="mesetas-minimizar" aria-label="Minimizar sugerencia" title="Minimizar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+        </button>
+        <button type="button" class="mesetas-cerrar" id="mesetas-cerrar" aria-label="Cerrar sugerencia" title="Cerrar">✕</button>
+      </div>
       <div class="mesetas-encabezado">
         <span class="mesetas-icono">${SVG_ICONOS.wrench}</span>
         <strong>Recomendación técnica Jacks4WD</strong>
@@ -1309,8 +1354,20 @@
       <div class="mesetas-acciones">
         <button type="button" class="btn small" id="mesetas-btn-add">${meseta ? '+ Añadir al carrito' : 'Ver mesetas disponibles'}</button>
         <button type="button" class="btn small ghost" id="mesetas-btn-faq">¿Por qué?</button>
+      </div>
       </div>`;
     document.body.appendChild(caja);
+
+    const btnExpandir = document.getElementById('mesetas-expandir');
+    const btnMinimizar = document.getElementById('mesetas-minimizar');
+    const fijarMinimizado = (min) => {
+      caja.classList.toggle('minimizado', min);
+      btnExpandir.setAttribute('aria-expanded', String(!min));
+      guardarMesetasMinimizado(min);
+    };
+    fijarMinimizado(caja.classList.contains('minimizado'));
+    btnMinimizar.onclick = () => { fijarMinimizado(true); btnExpandir.focus(); };
+    btnExpandir.onclick = () => { fijarMinimizado(false); btnMinimizar.focus(); };
 
     const btnCerrar = document.getElementById('mesetas-cerrar');
     if (btnCerrar) {
@@ -1350,6 +1407,10 @@
     else carrito.push({ clave, id, variante: variante || '', cant: 1 });
     guardarCarrito();
     toast('Añadido al carrito');
+    // Al elegir un kit de suspensión, sugerir sus mesetas (si el vehículo las usa)
+    if (p.categoria === 'suspension' && !/con\s+mesetas/i.test(p.nombre || '')) {
+      evaluarPopupMesetas({ modo: 'producto', prod: p, veh: leerVehActivo() });
+    }
   }
   function vistaCarrito() {
     const desc = clienteRegistrado();
@@ -2208,10 +2269,11 @@
         <div class="foto-box" id="foto-box">
           <div id="foto-preview">${p.foto ? `<img src="${esc(p.foto)}">` : '<div class="sin-foto">Sin foto</div>'}</div>
           <button type="button" class="btn small primary" id="foto-buscar">🔍 Buscar en Google</button>
-          <label class="btn small ghost">Elegir archivo<input id="foto-input" type="file" accept="image/*" hidden></label>
-          <button type="button" class="btn tiny ghost" id="foto-quitar">Quitar foto</button>
+          <label class="btn small ghost">Añadir fotos<input id="foto-input" type="file" accept="image/*" multiple hidden></label>
+          <button type="button" class="btn tiny ghost" id="foto-quitar">Quitar foto principal</button>
         </div>
-        <p class="hint pasos-foto">1) <em>Buscar en Google</em> → 2) clic derecho → <em>Copiar imagen</em> → 3) <strong>Ctrl + V</strong>. O arrastra / elige archivo.</p>
+        <div class="fotos-galeria-admin" id="fotos-galeria" aria-label="Fotos del producto"></div>
+        <p class="hint pasos-foto">1) <em>Buscar en Google</em> → 2) clic derecho → <em>Copiar imagen</em> → 3) <strong>Ctrl + V</strong>. O arrastra / elige archivos. Puedes añadir hasta ${MAX_FOTOS} fotos: la primera es la principal (la de la tarjeta); pulsa ★ en otra para hacerla principal.</p>
 
         <label style="display:block;margin-top:12px">Nombre *
           <input name="nombre" required value="${esc(p.nombre)}" style="width:100%;padding:10px;border:1px solid var(--linea);border-radius:8px;font:inherit">
@@ -2272,27 +2334,50 @@
     };
     $('#form-prod').categoria.onchange = (e) => { $('#merch-campos').hidden = e.target.value !== 'merch'; pintarSubs(); };
     pintarSubs();
-    let foto = p.foto || '';
+    // Fotos: la [0] es la principal (p.foto); el resto se guarda en p.fotosExtra
+    let fotos = fotosDe(p);
     const pintar = () => {
-      $('#foto-preview').innerHTML = foto ? `<img src="${esc(foto)}">` : '<div class="sin-foto">Sin foto</div>';
-      $('#foto-quitar').hidden = !foto;
+      const principal = fotos[0] || '';
+      $('#foto-preview').innerHTML = principal ? `<img src="${esc(principal)}">` : '<div class="sin-foto">Sin foto</div>';
+      $('#foto-quitar').hidden = !principal;
+      $('#fotos-galeria').innerHTML = fotos.length > 1
+        ? fotos.map((src, i) => `
+          <div class="foto-mini ${i === 0 ? 'principal' : ''}">
+            <img src="${esc(src)}" alt="Foto ${i + 1}">
+            ${i === 0
+              ? '<span class="foto-mini-etiqueta">Principal</span>'
+              : `<button type="button" class="foto-mini-btn" data-foto-principal="${i}" title="Hacer principal" aria-label="Hacer principal la foto ${i + 1}">★</button>`}
+            <button type="button" class="foto-mini-btn quitar" data-foto-quitar="${i}" title="Quitar" aria-label="Quitar la foto ${i + 1}">✕</button>
+          </div>`).join('')
+        : '';
     };
-    const usarImagen = async (f) => {
-      if (!f || !f.type.startsWith('image/')) return;
-      try { foto = await redimensionarImagen(f, 500); pintar(); } catch (e) { alert(e.message); }
+    pintar();
+    $('#fotos-galeria').onclick = (e) => {
+      const bp = e.target.closest('[data-foto-principal]');
+      const bq = e.target.closest('[data-foto-quitar]');
+      if (bp) { const [f] = fotos.splice(Number(bp.dataset.fotoPrincipal), 1); fotos.unshift(f); pintar(); }
+      if (bq) { fotos.splice(Number(bq.dataset.fotoQuitar), 1); pintar(); }
+    };
+    const usarImagenes = async (lista) => {
+      const imgs = [...(lista || [])].filter((f) => f && f.type && f.type.startsWith('image/'));
+      for (const f of imgs) {
+        if (fotos.length >= MAX_FOTOS) { alert(`Máximo ${MAX_FOTOS} fotos por producto.`); break; }
+        try { fotos.push(await redimensionarImagen(f, 500)); } catch (e) { alert(e.message); }
+      }
+      pintar();
     };
     const alPegar = (e) => {
-      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
-      if (item) { e.preventDefault(); usarImagen(item.getAsFile()); }
+      const items = [...(e.clipboardData?.items || [])].filter((i) => i.type.startsWith('image/'));
+      if (items.length) { e.preventDefault(); usarImagenes(items.map((i) => i.getAsFile())); }
     };
     document.addEventListener('paste', alPegar);
-    $('#foto-input').onchange = (e) => usarImagen(e.target.files[0]);
+    $('#foto-input').onchange = (e) => { usarImagenes(e.target.files); e.target.value = ''; };
     $('#foto-buscar').onclick = () => window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(`${p.nombre || p.marca} suspension`), '_blank', 'noopener');
-    $('#foto-quitar').onclick = () => { foto = ''; pintar(); };
+    $('#foto-quitar').onclick = () => { fotos.shift(); pintar(); };
     const zona = $('#foto-box');
     zona.ondragover = (e) => { e.preventDefault(); zona.classList.add('soltar'); };
     zona.ondragleave = () => zona.classList.remove('soltar');
-    zona.ondrop = (e) => { e.preventDefault(); zona.classList.remove('soltar'); usarImagen(e.dataTransfer.files[0]); };
+    zona.ondrop = (e) => { e.preventDefault(); zona.classList.remove('soltar'); usarImagenes(e.dataTransfer.files); };
 
     // --- Lógica de compatibles ---
     let compatibles = (p.compatibles || []).map((c) => ({ ...c }));
@@ -2368,7 +2453,9 @@
       p.precio = precio;
       p.altura = f.altura.value.trim();
       p.descripcion = f.descripcion.value.trim();
-      p.foto = foto;
+      p.foto = fotos[0] || '';
+      p.fotosExtra = fotos.slice(1);
+      if (!p.fotosExtra.length) delete p.fotosExtra;
       p.compatibles = compatibles;
       p.tipo = p.categoria === 'merch' ? f.tipo.value : '';
       p.subcategoria = p.categoria === 'merch' ? '' : f.subcategoria.value;
