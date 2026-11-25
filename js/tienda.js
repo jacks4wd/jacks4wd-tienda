@@ -313,6 +313,8 @@
   function productoCompatibleConVeh(p, veh) {
     if (!veh) return true;
     if (!Array.isArray(p.compatibles) || !p.compatibles.length) return true;
+    // Solo marca elegida (filtro instantáneo del catálogo): cualquier modelo de esa marca
+    if (!veh.modelo) return p.compatibles.some((c) => c.marca === veh.marca);
     const vDef = vehiculos().find((v) => v.marca === veh.marca && v.modelo === veh.modelo);
     const gensValidas = new Set((vDef?.generaciones || []).map((g) => String(g.nombre || '').trim().toLowerCase()));
     return p.compatibles.some((c) => {
@@ -452,7 +454,7 @@
       </div>`;
   }
 
-  function activarBarraVehiculo(vehInicial, alCambiar) {
+  function activarBarraVehiculo(vehInicial, alCambiar, { auto = false } = {}) {
     const form = $('#vb-form');
     if (!form) return;
     const selMarca = $('#vb-marca');
@@ -481,12 +483,35 @@
       if (vehInicial.modelo) poblarGens(vehInicial.marca, vehInicial.modelo, vehInicial.genNombre || '');
     }
 
+    // En el catálogo (auto) cada cambio filtra al instante; en el inicio se espera al botón.
+    const aplicarAhora = (enfocar) => {
+      const marca = selMarca.value;
+      const modelo = selModelo.value;
+      if (!marca) { guardarVehActivo(null); alCambiar(null); }
+      else {
+        const genNombre = modelo ? (selGen.value || '') : '';
+        const vDef = vehiculos().find((x) => x.marca === marca && x.modelo === modelo);
+        const gDef = genNombre ? (vDef?.generaciones || []).find((g) => g.nombre === genNombre) : null;
+        const nuevo = { marca, modelo, genNombre, anios: gDef?.anios || [] };
+        guardarVehActivo(nuevo); // solo se recuerda si hay modelo
+        alCambiar(nuevo);
+      }
+      // La barra se vuelve a pintar: devolver el foco al siguiente paso
+      const sig = enfocar && document.getElementById(enfocar);
+      if (sig && !sig.disabled) sig.focus();
+    };
+
     selMarca.onchange = () => {
       poblarModelos(selMarca.value, '');
       poblarGens(selMarca.value, selModelo.value, '');
+      if (auto) aplicarAhora('vb-modelo');
     };
     selModelo.onchange = () => {
       poblarGens(selMarca.value, selModelo.value, '');
+      if (auto) aplicarAhora('vb-gen');
+    };
+    selGen.onchange = () => {
+      if (auto) aplicarAhora('vb-gen');
     };
 
     form.onsubmit = (e) => {
@@ -837,8 +862,8 @@
       activarBarraVehiculo(vehActivo, (nuevoVeh) => {
         vehActivo = nuevoVeh;
         renderTodo();
-        if (categoria === 'suspension' && vehActivo) evaluarPopupMesetas({ modo: 'catalogo', veh: vehActivo });
-      });
+        if (categoria === 'suspension' && vehActivo?.modelo) evaluarPopupMesetas({ modo: 'catalogo', veh: vehActivo });
+      }, { auto: true });
     };
 
     const renderSidebarYResultados = () => {
