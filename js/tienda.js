@@ -9,11 +9,9 @@
   'use strict';
   const CFG = typeof TIENDA_CONFIG !== 'undefined' ? TIENDA_CONFIG : null;
   const MARCAS_INICIAL = typeof MARCAS !== 'undefined' ? MARCAS : [];
-  const PRODUCTOS_INICIAL = typeof PRODUCTOS !== 'undefined' ? PRODUCTOS : [];
   const VEHICULOS_INICIAL = typeof VEHICULOS !== 'undefined' ? VEHICULOS : [];
   const CFG_INICIAL = typeof CONFIG_INICIAL !== 'undefined' ? CONFIG_INICIAL : null;
   const CONFIG_DEF = {
-    heroEtiqueta: 'JACKS4WD · Especialistas 4x4',
     heroTitulo: 'Equipa tu 4x4 con lo mejor',
     heroSubtitulo: 'Suspensiones, accesorios y merch oficial. Elige tu vehículo y pide directo por WhatsApp.',
     fondo: '#f6f5f3',
@@ -66,8 +64,12 @@
   // ===================== CATÁLOGO (estado + carga de Supabase) =====================
   const CATALOGO_KEY = 'jacks4wd-tienda-catalogo';
   const confInicial = () => ({ ...CONFIG_DEF, ...(CFG_INICIAL || {}), categorias: (CFG_INICIAL?.categorias || CONFIG_DEF.categorias).map((c) => ({ ...c })), merchTipos: (CFG_INICIAL?.merchTipos || CONFIG_DEF.merchTipos).map((t) => ({ ...t })) });
-  let catalogo = { config: confInicial(), marcas: MARCAS_INICIAL.map((m) => ({ ...m })), productos: PRODUCTOS_INICIAL.map((p) => ({ ...p })), vehiculos: VEHICULOS_INICIAL.map((v) => ({ ...v })) };
+  // Los productos viven en Supabase: sin conexión se usa la última copia guardada en este navegador.
+  let catalogo = { config: confInicial(), marcas: MARCAS_INICIAL.map((m) => ({ ...m })), productos: [], vehiculos: VEHICULOS_INICIAL.map((v) => ({ ...v })) };
   const NUBE = typeof TIENDA_NUBE !== 'undefined' ? TIENDA_NUBE : null;
+  // true solo si en esta visita se leyó el catálogo de la nube; protege "Guardar en la nube"
+  // para no sobrescribir Supabase con una copia local vieja o vacía.
+  let catalogoDeNube = false;
 
   function catalogoLocal() { try { return JSON.parse(localStorage.getItem(CATALOGO_KEY) || 'null'); } catch { return null; } }
   function guardarCatalogoLocal() { try { localStorage.setItem(CATALOGO_KEY, JSON.stringify(catalogo)); } catch { /* sin almacenamiento */ } }
@@ -79,11 +81,14 @@
       const r = await fetch(`${NUBE.url}/rest/v1/tienda?select=data&id=eq.catalogo`, {
         headers: { apikey: NUBE.clave, 'Content-Type': 'application/json' },
       });
-      if (!r.ok) return;
+      if (!r.ok) throw new Error('nube');
       const filas = await r.json();
+      // La nube respondió sin catálogo (tienda nueva): guardar no pisa nada
+      if (Array.isArray(filas) && !filas.length) catalogoDeNube = true;
       if (Array.isArray(filas) && filas.length && filas[0].data) {
         const d = filas[0].data;
         if (Array.isArray(d.marcas) && Array.isArray(d.productos)) {
+          catalogoDeNube = true;
           catalogo = {
             config: d.config ? { ...confInicial(), ...d.config, categorias: (d.config.categorias || confInicial().categorias).map((c) => ({ ...c })) } : confInicial(),
             marcas: d.marcas,
@@ -1475,7 +1480,7 @@
       return `• ${p.nombre}${x.variante ? ' (' + x.variante + ')' : ''} x${x.cant} — ${fmt(p.precio * x.cant)}`;
     }).join('\n');
     const mensaje = `Hola ${CFG.nombre}! Quiero hacer un pedido:\n\n${lineas}\n\nTotal: ${fmt(total)} USD\nPago: ${pago}\n${desc ? 'Cliente registrado (descuento aplicado).\n' : ''}\nMi nombre es: `;
-    window.open(`https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(mensaje)}`, '_blank');
+    window.open(`https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
   }
 
   // ===================== ADMINISTRACIÓN =====================
@@ -1499,6 +1504,7 @@
 
   async function guardarCatalogoNube() {
     if (!sesionAdmin) throw new Error('Inicia sesión primero.');
+    if (!catalogoDeNube) throw new Error('No se pudo leer el catálogo de la nube al abrir la tienda. Recarga la página con conexión antes de guardar, para no sobrescribir los productos de la nube.');
     const r = await fetch(`${NUBE.url}/rest/v1/tienda`, {
       method: 'POST',
       headers: { apikey: NUBE.clave, Authorization: 'Bearer ' + sesionAdmin.access_token, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
@@ -2593,18 +2599,6 @@
   // preservando siempre el lienzo claro y las tarjetas blanco estudio estilo ARB USA.
   function aplicarConfig() {
     const cfg = config();
-    // Migración (una vez): categoría "Partes de suspensión" y subcategorías en catálogos ya guardados
-    if (!cfg.migrado2) {
-      cfg.categorias = cfg.categorias || [];
-      CONFIG_DEF.categorias.forEach((d, i) => {
-        const subs = () => (d.subcategorias || []).map((s) => ({ ...s }));
-        const ex = cfg.categorias.find((c) => c.id === d.id);
-        if (!ex) cfg.categorias.splice(Math.min(i, cfg.categorias.length), 0, { ...d, subcategorias: subs() });
-        else if (!Array.isArray(ex.subcategorias)) ex.subcategorias = subs();
-      });
-      cfg.migrado2 = true;
-    }
-    if (cfg.colorAcento && cfg.colorAcento.toLowerCase() === '#c2410c') cfg.colorAcento = '#b43a08';
     // Categorías duplicadas (mismo nombre): se conserva la primera y sus productos pasan a ella
     const vistos = new Map();
     cfg.categorias = (cfg.categorias || []).filter((c) => {
@@ -2613,94 +2607,6 @@
       productos().forEach((p) => { if (p.categoria === c.id) p.categoria = vistos.get(k); });
       return false;
     });
-    // Renombre: "Suspensiones" → "Kits de suspensión" (también en catálogos ya guardados)
-    (cfg.categorias || []).forEach((c) => { if (c.id === 'suspension' && c.nombre === 'Suspensiones') c.nombre = 'Kits de suspensión'; });
-
-    // Migración (una vez): cargar los modelos y kits completos OME (Nitrocharger, MT64, BP-51)
-    // también cuando el navegador o Supabase ya tenían el catálogo inicial de prueba guardado.
-    if (!cfg.migradoKitsOME1) {
-      const catSusp = (cfg.categorias || []).find((c) => c.id === 'suspension');
-      if (catSusp) {
-        catSusp.subcategorias = Array.isArray(catSusp.subcategorias) ? catSusp.subcategorias : [];
-        [
-          { id: 'nitrocharger', nombre: 'Nitrocharger' },
-          { id: 'mt64', nombre: 'MT64' },
-          { id: 'bp51', nombre: 'BP-51' },
-        ].forEach((linea) => {
-          if (!catSusp.subcategorias.some((s) => s.id === linea.id)) catSusp.subcategorias.push({ ...linea });
-        });
-      }
-
-      catalogo.marcas = Array.isArray(catalogo.marcas) ? catalogo.marcas : [];
-      MARCAS_INICIAL.forEach((m) => {
-        if (!catalogo.marcas.some((x) => x.nombre.toLowerCase() === m.nombre.toLowerCase())) {
-          catalogo.marcas.push({ ...m });
-        }
-      });
-
-      // Integrar modelos de vehículos sin borrar fotos ni años que el admin ya hubiera editado
-      catalogo.vehiculos = Array.isArray(catalogo.vehiculos) ? catalogo.vehiculos : [];
-      const normVeh = (marca, modelo) => `${String(marca || '').trim().toLowerCase()}::${String(modelo || '').trim().toLowerCase()}`;
-      VEHICULOS_INICIAL.forEach((vIni) => {
-        const ya = catalogo.vehiculos.find((x) => x.id === vIni.id || normVeh(x.marca, x.modelo) === normVeh(vIni.marca, vIni.modelo));
-        if (!ya) {
-          catalogo.vehiculos.push({
-            ...vIni,
-            generaciones: (vIni.generaciones || []).map((g) => ({ ...g })),
-          });
-        } else {
-          // Dejar el espacio limpio de generaciones para que el admin cargue los años manualmente, conservando su foto
-          ya.generaciones = [];
-        }
-      });
-
-      // Quitar los 3 kits de ejemplo iniciales si no tenían foto personalizada y añadir los 111 kits reales
-      const idsDemoAntiguos = new Set(['susp-ome-nitrocharger-plus', 'susp-ome-bp51', 'susp-ome-mt64']);
-      catalogo.productos = (catalogo.productos || []).filter((p) => !(idsDemoAntiguos.has(p.id) && !p.foto));
-      const idsExistentes = new Set(catalogo.productos.map((p) => p.id));
-      PRODUCTOS_INICIAL.forEach((pIni) => {
-        if (!idsExistentes.has(pIni.id)) {
-          catalogo.productos.push({
-            ...pIni,
-            compatibles: (pIni.compatibles || []).map((c) => ({ ...c })),
-          });
-        }
-      });
-
-      cfg.migradoKitsOME1 = true;
-      guardarCatalogoLocal();
-    }
-
-    // Migración (una vez): kits Dobinsons Twintube, IMS y MRA (lista XNEO 20-06-2025, precio Detal).
-    // Solo añade lo que falta por id; no toca productos que el admin ya haya editado o borrado
-    // después de guardar, porque la marca queda en la nube con "Guardar en la nube".
-    if (!cfg.migradoKitsDobinsons1 && typeof KITS_DOBINSONS !== 'undefined') {
-      const catSusp = (cfg.categorias || []).find((c) => c.id === 'suspension');
-      if (catSusp) {
-        catSusp.subcategorias = Array.isArray(catSusp.subcategorias) ? catSusp.subcategorias : [];
-        [
-          { id: 'twintube', nombre: 'Twintube' },
-          { id: 'ims', nombre: 'IMS' },
-          { id: 'mra', nombre: 'MRA' },
-        ].forEach((linea) => {
-          if (!catSusp.subcategorias.some((s) => s.id === linea.id)) catSusp.subcategorias.push({ ...linea });
-        });
-      }
-      catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : [];
-      // El kit MRR/MRA de Land Cruiser 300 que ya estaba cargado pasa a la línea MRA
-      catalogo.productos.forEach((p) => {
-        if (p.marca === 'Dobinsons' && !p.subcategoria && /\bMR[RA]\b/i.test(p.nombre || '')) p.subcategoria = 'mra';
-      });
-      const idsExistentes = new Set(catalogo.productos.map((p) => p.id));
-      KITS_DOBINSONS.forEach((k) => {
-        if (!idsExistentes.has(k.id)) {
-          catalogo.productos.push({ ...k, compatibles: k.compatibles.map((c) => ({ ...c, anios: [...(c.anios || [])] })) });
-        }
-      });
-      cfg.migradoKitsDobinsons1 = true;
-      guardarCatalogoLocal();
-    }
-
     // Asegurar siempre subcategoría "Brazos de control superiores / Mesetas" en Partes de suspensión y FAQs base
     const catPartes = (cfg.categorias || []).find((c) => c.id === 'partes');
     if (catPartes) {
@@ -2860,19 +2766,7 @@
     {
       const vehPorId = new Map((catalogo.vehiculos || []).map((v) => [v.id, v]));
       const vehPorNom = new Map((catalogo.vehiculos || []).map((v) => [`${v.marca.toLowerCase()}::${v.modelo.toLowerCase()}`, v]));
-      const mapaProdInicial = new Map(PRODUCTOS_INICIAL.map((p) => [p.id, p]));
-
       (catalogo.productos || []).forEach((p) => {
-        const ini = mapaProdInicial.get(p.id);
-        if (!cfg.migradoVehUnificados4) {
-          if (ini && !p.altura && ini.altura) p.altura = ini.altura;
-          if (!p.altura && p.categoria === 'suspension') {
-            const r = String(p.nombre || '').match(/\b([2345])\s*-\s*([2345])\s*"/);
-            const s = String(p.nombre || '').match(/(?:^|\s)([2345])\s*"/);
-            if (r) p.altura = `${r[1]}"-${r[2]}"`;
-            else if (s) p.altura = `${s[1]}"`;
-          }
-        }
         if (Array.isArray(p.compatibles) && p.compatibles.length) {
           const vistosC = new Set();
           p.compatibles = p.compatibles.map((c) => {
@@ -2905,7 +2799,6 @@
         }
       }
 
-      cfg.migradoVehUnificados4 = true;
       guardarCatalogoLocal();
     }
 
