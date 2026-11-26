@@ -2624,6 +2624,98 @@
     if (cfg.modoPrivadoIG === undefined) cfg.modoPrivadoIG = true;
     if (!cfg.claveInvitado) cfg.claveInvitado = 'jacks4wd';
 
+    // Migración (una vez, 25-11-2026): generaciones exactas, duplicado y kits Eibach.
+    // Queda fija en Supabase al pulsar "Guardar en la nube" (o al guardar cualquier producto).
+    if (!cfg.migradoEibach1) {
+      const prods = (catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : []);
+      const porId = (id) => prods.find((p) => p.id === id);
+      const vehDe = (marca, modelo) => (catalogo.vehiculos || []).find((v) => v.marca === marca && v.modelo === modelo);
+      const genReal = (marca, modelo, pista) => {
+        const g = (vehDe(marca, modelo)?.generaciones || []).find((x) => String(x.nombre || '').toLowerCase().includes(pista));
+        return g ? g.nombre : '';
+      };
+
+      // 1) Duplicados: los 3 kits de ejemplo "Kit Suspensión OME …" (4Runner 5ta / Prado S150) repetían
+      //    a los kits reales con el mismo precio y vehículo (Nitrocharger 2010-2024 Medium +,
+      //    BP-51 4Runner 2010-2024/FJ, MT64 4Runner 10-24 / Prado 150 / FJ).
+      ['susp-ome-nitrocharger-plus', 'susp-ome-bp51', 'susp-ome-mt64'].forEach((id) => {
+        const i = prods.findIndex((p) => p.id === id);
+        if (i >= 0) prods.splice(i, 1);
+      });
+
+      // 2) Kits cuyo nombre indica la generación pero estaban asociados al modelo completo
+      //    (salían en todas las generaciones y parecían repetidos).
+      const GENS = [
+        ['Toyota', '4Runner', '4ta', ['ome-nitrocharger-4runner-fj-2006-2010', 'ome-mt64-4runner-2003-fj-2006-2009']],
+        ['Toyota', '4Runner', '5ta', ['ome-bp51-4runner-2010-2024-fj-2010-2016', 'ome-mt64-4runner-10-24-prado-150-fj-2010', 'pmwtzi6brfjd0im']],
+        ['Toyota', '4Runner', '6ta', ['ome-nitrocharger-4runner-2025-con-mesetas-superiores', 'ome-bp51-4runner-2025-con-mesetas-superiores', 'ome-mt64-4runner-2025-con-mesetas-superiores']],
+        ['Toyota', 'Tundra', '2007', ['ome-bp51-tundra', 'ome-nitrocharger-tundra']],
+        ['Toyota', 'Tundra', '2022', ['ome-bp51-tundra-2022', 'ome-mt64-tundra-22', 'ome-nitrocharger-tundra-3-2022']],
+        ['Toyota', 'Fortuner', '2da', ['ome-nitrocharger-fortuner-dubai-2016-on-medium']],
+      ];
+      GENS.forEach(([marca, modelo, pista, ids]) => {
+        const gen = genReal(marca, modelo, pista);
+        if (!gen) return;
+        ids.forEach((id) => (porId(id)?.compatibles || []).forEach((c) => {
+          if (c.marca === marca && c.modelo === modelo) { c.genNombre = gen; c.anios = []; }
+        }));
+      });
+
+      // 3) 4Runner 3ra generación (1996-2002), necesaria para el kit Eibach 1999-2001
+      const v4r = vehDe('Toyota', '4Runner');
+      if (v4r) {
+        v4r.generaciones = Array.isArray(v4r.generaciones) ? v4r.generaciones : [];
+        if (!v4r.generaciones.some((g) => /3r?a/i.test(g.nombre))) {
+          v4r.generaciones.unshift({ nombre: '3ra Generacion', anios: [1996, 1997, 1998, 1999, 2000, 2001, 2002] });
+        }
+      }
+
+      // 4) Marca Eibach, sus líneas y los 6 kits de suspensión (lista Partech, precio sugerido)
+      catalogo.marcas = Array.isArray(catalogo.marcas) ? catalogo.marcas : [];
+      if (!catalogo.marcas.some((m) => m.nombre.toLowerCase() === 'eibach')) {
+        catalogo.marcas.push({ id: 'eibach', nombre: 'Eibach', logo: '', descripcion: 'Resortes y kits de suspensión de alto rendimiento, fabricados en Alemania y EE. UU.' });
+      }
+      const catSusp = (cfg.categorias || []).find((c) => c.id === 'suspension');
+      if (catSusp) {
+        catSusp.subcategorias = Array.isArray(catSusp.subcategorias) ? catSusp.subcategorias : [];
+        [{ id: 'pro-truck-lift', nombre: 'Pro-Truck Lift' }, { id: 'all-terrain-lift', nombre: 'All-Terrain Lift' }].forEach((l) => {
+          if (!catSusp.subcategorias.some((s) => s.id === l.id)) catSusp.subcategorias.push(l);
+        });
+      }
+      const C = (marca, modelo, pista) => {
+        const c = { marca, modelo, anios: [] };
+        const g = pista ? genReal(marca, modelo, pista) : '';
+        if (g) c.genNombre = g;
+        return c;
+      };
+      const EIBACH = [
+        { id: 'eibach-all-terrain-grand-cherokee-wk2', nombre: 'Kit de Suspensión Eibach All-Terrain Lift Grand Cherokee WK2 2011+', subcategoria: 'all-terrain-lift', altura: '2"', precio: 1700,
+          descripcion: 'Kit de suspensión Eibach All-Terrain Lift Kit para Jeep Grand Cherokee WK2 2011 en adelante. Eleva 2" adelante y 0,5" atrás. SKU 28108-980.',
+          compatibles: [C('Jeep', 'Grand Cherokee', 'wk2')] },
+        { id: 'eibach-pro-truck-lift-4runner-1999-2001-meru-prado', nombre: 'Kit de Suspensión Eibach Pro-Truck Lift 4Runner 1999-2001 / Merú / Prado', subcategoria: 'pro-truck-lift', altura: '2.5"', precio: 1840.72,
+          descripcion: 'Kit de suspensión Eibach Pro-Truck Lift para Toyota 4Runner 1999-2001 y Land Cruiser Merú / Prado. Eleva 2,5" adelante y 1" atrás. SKU E80-82-005-01-22.',
+          compatibles: [C('Toyota', '4Runner', '3r'), C('Toyota', 'Land Cruiser Serie 90')] },
+        { id: 'eibach-pro-truck-lift-stage2-hilux-revo', nombre: 'Kit de Suspensión Eibach Pro-Truck Lift Stage 2 Hilux Revo 2016+', subcategoria: 'pro-truck-lift', altura: '2.5"', precio: 1955,
+          descripcion: 'Kit de suspensión Eibach Pro-Truck Lift Stage 2 para Toyota Hilux 2016-2026 4WD (N80). Eleva de 0 a 2,5" adelante y de 0 a 1,5" atrás. SKU E86-82-070-01-22.',
+          compatibles: [C('Toyota', 'Hilux', 'revo')] },
+        { id: 'eibach-pro-truck-lift-stage1-roraima-s200', nombre: 'Kit de Suspensión Eibach Pro-Truck Lift Stage 1 Roraima Serie 200', subcategoria: 'pro-truck-lift', altura: '1.75"', precio: 1790,
+          descripcion: 'Kit de suspensión Eibach Pro-Truck Lift Stage 1 para Toyota Roraima (Land Cruiser Serie 200). Eleva 1,75" adelante y 1" atrás. SKU E80-82-072-03-22.',
+          compatibles: [C('Toyota', 'Roraima Serie 200')] },
+        { id: 'eibach-pro-truck-lift-stage1-tundra-2007-2015', nombre: 'Kit de Suspensión Eibach Pro-Truck Lift Stage 1 Tundra 2007-2015', subcategoria: 'pro-truck-lift', altura: '2"', precio: 1600,
+          descripcion: 'Kit de suspensión Eibach Pro-Truck Lift Stage 1 para Toyota Tundra 2007-2015. Eleva 2" adelante y de 0 a 1,5" atrás. SKU E80-82-067-01-22.',
+          compatibles: [C('Toyota', 'Tundra', '2007')] },
+        { id: 'eibach-pro-truck-lift-stage2-lc250-4runner-2025', nombre: 'Kit de Suspensión Eibach Pro-Truck Lift Stage 2 Land Cruiser 250 / 4Runner 2025+', subcategoria: 'pro-truck-lift', altura: '3"', precio: 2415,
+          descripcion: 'Kit de suspensión Eibach Pro-Truck Lift Stage 2 para Toyota Land Cruiser Prado 250 (2024-2026, 2.4L turbo híbrido 4WD) y 4Runner 6ta generación 2025+. Eleva de 0 a 3" adelante y 1,5" atrás. SKU E86-82-108-01-22.',
+          compatibles: [C('Toyota', 'Land Cruiser LC250'), C('Toyota', '4Runner', '6ta')] },
+      ];
+      EIBACH.forEach((k) => {
+        if (!porId(k.id)) catalogo.productos.push({ ...k, categoria: 'suspension', marca: 'Eibach', foto: '' });
+      });
+
+      cfg.migradoEibach1 = true;
+      guardarCatalogoLocal();
+    }
+
     // Normalizador permanente de variantes/duplicados de modelos:
     // - "Autana" -> "Land Cruiser S80" (veh-toyota-autana)
     // - "Merú / Prado" / "Prado / Meru" / "Land Cruiser S90" -> "Land Cruiser Serie 90" (veh-toyota-meru-prado)
