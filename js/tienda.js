@@ -315,6 +315,25 @@
     const qs = params.toString();
     return `#/catalogo/${catId}${qs ? '?' + qs : ''}`;
   }
+  // Productos de un vehículo: los que son SOLO para él y los compartidos con otros vehículos
+  function productosDeVehiculo(v) {
+    const esDeV = (c) => c.marca === v.marca && c.modelo === v.modelo;
+    const conV = productos().filter((p) => Array.isArray(p.compatibles) && p.compatibles.some(esDeV));
+    return {
+      soloEste: conV.filter((p) => p.compatibles.every(esDeV)),
+      compartidos: conV.filter((p) => !p.compatibles.every(esDeV)),
+    };
+  }
+  // Elimina el vehículo, los productos que eran solo suyos y su compatibilidad en los compartidos
+  function eliminarVehiculoEnCascada(v) {
+    const { soloEste, compartidos } = productosDeVehiculo(v);
+    const fuera = new Set(soloEste.map((p) => p.id));
+    catalogo.productos = productos().filter((p) => !fuera.has(p.id));
+    compartidos.forEach((p) => { p.compatibles = p.compatibles.filter((c) => !(c.marca === v.marca && c.modelo === v.modelo)); });
+    catalogo.vehiculos = vehiculos().filter((x) => x !== v);
+    return { eliminados: soloEste.length, compartidos: compartidos.length };
+  }
+
   function productoCompatibleConVeh(p, veh) {
     if (!veh) return true;
     // Con un vehículo elegido solo cuentan los productos asociados a él: los que no tienen
@@ -379,6 +398,25 @@
     const extra = Array.isArray(p?.fotosExtra) ? p.fotosExtra.filter(Boolean) : [];
     return [p?.foto, ...extra].filter(Boolean).filter((f, i, a) => a.indexOf(f) === i);
   }
+  // ---- Fotos buscadas automáticamente (js/fotos-sugeridas.js) que esperan aprobación ----
+  // La sugerencia no se muestra a los clientes: al aprobarla pasa a ser la foto del producto.
+  // El resultado (aprobada / rechazada) queda en config.fotosRevision para no volver a proponerla.
+  const FOTOS_SUG = typeof FOTOS_SUGERIDAS !== 'undefined' && Array.isArray(FOTOS_SUGERIDAS) ? FOTOS_SUGERIDAS : [];
+  function estadosRevision() {
+    const c = config();
+    if (!c.fotosRevision || typeof c.fotosRevision !== 'object') c.fotosRevision = {};
+    return c.fotosRevision;
+  }
+  function sugerenciaFoto(id) {
+    const s = FOTOS_SUG.find((x) => x && x.id === id && typeof x.foto === 'string');
+    const p = s && productoPorId(id);
+    if (!p || p.foto) return null; // ya tiene foto (aprobada o puesta a mano)
+    const e = estadosRevision()[id];
+    if (e && e.foto === s.foto) return null; // esta misma foto ya fue revisada
+    return s;
+  }
+  function fotosEnRevision() { return FOTOS_SUG.map((s) => sugerenciaFoto(s.id)).filter(Boolean); }
+
   function fotoHTML(p) {
     if (p.foto) return `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy">`;
     const cat = categorias().find((c) => c.id === p.categoria);
@@ -1494,6 +1532,14 @@
 
   // ===================== ADMINISTRACIÓN =====================
   let sesionAdmin = null;
+  // El buscador y el filtro de productos del admin se recuerdan entre redibujados (al guardar un
+  // producto se vuelve a pintar el panel; antes se vaciaban y había que buscar de nuevo).
+  const filtroProdAdmin = { q: '', filtro: '' };
+  function refrescarAdmin() {
+    const y = window.scrollY;
+    vistaAdmin();
+    window.scrollTo(0, y);
+  }
 
   async function loginAdmin(email, clave) {
     if (!NUBE || !NUBE.url || !NUBE.clave) throw new Error('No hay conexión configurada.');
@@ -1511,9 +1557,146 @@
     return { access_token: d.access_token, email: d.user.email };
   }
 
+  // ===================== FOTOS EN SUPABASE STORAGE =====================
+  // Las fotos van como archivos en el bucket "tienda-fotos" (supabase/tienda-fotos.sql) y el
+  // catálogo solo guarda su enlace. Así el catálogo pesa poco y cada foto carga cuando se ve.
+  const BUCKET_FOTOS = 'tienda-fotos';
+  let storageNoDisponible = false; // se marca si falta ejecutar el SQL del bucket
+  const esFotoIncrustada = (s) => typeof s === 'string' && s.startsWith('data:image/');
+  const urlFotoNube = (ruta) => `${NUBE.url}/storage/v1/object/public/${BUCKET_FOTOS}/${ruta}`;
+  async function huellaTexto(s) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(b)].slice(0, 12).map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  function dataUrlABlob(d) {
+    const [cab, b64] = d.split(',');
+    const mime = (cab.match(/^data:(image\/[a-z+]+);base64$/i) || [])[1] || 'image/jpeg';
+    const bin = atob(b64 || '');
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], { type: mime });
+  }
+  async function subirFotoNube(dataUrl, carpeta) {
+    const blob = dataUrlABlob(dataUrl);
+    const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+    // Nombre por contenido: la misma foto nunca se sube dos veces y el enlace no cambia
+    const ruta = `${carpeta}/${await huellaTexto(dataUrl)}.${ext}`;
+    const r = await fetch(`${NUBE.url}/storage/v1/object/${BUCKET_FOTOS}/${ruta}`, {
+      method: 'POST',
+      headers: { apikey: NUBE.clave, Authorization: 'Bearer ' + sesionAdmin.access_token, 'Content-Type': blob.type, 'x-upsert': 'true', 'cache-control': 'max-age=31536000' },
+      body: blob,
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      if (/bucket not found|not found|row-level security|unauthorized/i.test(t) || r.status === 404) storageNoDisponible = true;
+      throw new Error(t || `Error ${r.status} al subir la foto`);
+    }
+    return urlFotoNube(ruta);
+  }
+  // Sube a Storage todas las fotos que sigan incrustadas en el catálogo y las cambia por su enlace
+  async function moverFotosANube(alAvanzar = () => {}) {
+    const tareas = [];
+    const anotar = (obj, clave, carpeta) => { if (obj && esFotoIncrustada(obj[clave])) tareas.push({ obj, clave, carpeta }); };
+    (catalogo.productos || []).forEach((p) => {
+      anotar(p, 'foto', 'productos');
+      (Array.isArray(p.fotosExtra) ? p.fotosExtra : []).forEach((_, i) => anotar(p.fotosExtra, i, 'productos'));
+    });
+    (catalogo.vehiculos || []).forEach((v) => anotar(v, 'foto', 'vehiculos'));
+    (catalogo.marcas || []).forEach((m) => anotar(m, 'logo', 'marcas'));
+    anotar(catalogo.config, 'heroFoto', 'portada');
+    if (!tareas.length || storageNoDisponible) return { subidas: 0, pendientes: tareas.length };
+    const hechas = new Map();
+    let subidas = 0;
+    for (const t of tareas) {
+      const dato = t.obj[t.clave];
+      try {
+        const url = hechas.get(dato) || await subirFotoNube(dato, t.carpeta);
+        hechas.set(dato, url);
+        t.obj[t.clave] = url;
+        subidas++;
+        alAvanzar(subidas, tareas.length);
+      } catch (e) {
+        if (storageNoDisponible) break; // falta el SQL del bucket: se guarda como antes
+      }
+    }
+    return { subidas, pendientes: tareas.length - subidas };
+  }
+
+  // ---- Sección "Fotos en revisión" del administrador ----
+  function pintarRevisionFotos() {
+    const sec = $('#sec-revision');
+    if (!sec) return;
+    const lista = fotosEnRevision();
+    sec.hidden = !lista.length;
+    if (!lista.length) { sec.innerHTML = ''; return; }
+    const enlaceSeguro = (u) => (/^https?:\/\//i.test(String(u || '')) ? u : '');
+    sec.innerHTML = `
+      <div class="seccion-head"><h2>Fotos en revisión</h2></div>
+      <p class="hint" style="margin-top:-6px">${lista.length} foto(s) buscadas automáticamente. Los clientes no las ven hasta que las apruebes. Abre las fuentes para comparar.</p>
+      <div class="revision-grid">
+        ${lista.map((s) => {
+          const p = productoPorId(s.id);
+          const veh = (p.compatibles || []).map((c) => `${c.marca} ${c.modelo}${c.genNombre ? ' · ' + String(c.genNombre).trim() : ''}`).join(', ') || 'Sin vehículo asociado';
+          const fuentes = (Array.isArray(s.fuentes) ? s.fuentes : []).map(enlaceSeguro).filter(Boolean);
+          return `
+          <article class="revision-card">
+            <a class="revision-foto" href="${esc(s.foto)}" target="_blank" rel="noopener" title="Ver en grande">
+              <img src="${esc(s.foto)}" alt="Foto sugerida para ${esc(p.nombre)}" loading="lazy">
+            </a>
+            <div class="revision-info">
+              <span class="badge-revision">En revisión</span>
+              <strong>${esc(p.nombre)}</strong>
+              <span class="hint">${esc(p.marca || '')} · ${esc(veh)}</span>
+              ${s.nota ? `<p class="revision-nota">${esc(s.nota)}</p>` : ''}
+              ${fuentes.length ? `<div class="revision-fuentes">Fuentes: ${fuentes.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${i + 1}</a>`).join(' · ')}</div>` : ''}
+            </div>
+            <div class="revision-acciones">
+              <button type="button" class="btn small" data-aprobar-foto="${esc(s.id)}">Aprobar</button>
+              <button type="button" class="btn small ghost" data-rechazar-foto="${esc(s.id)}">Rechazar</button>
+            </div>
+          </article>`;
+        }).join('')}
+      </div>`;
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const guardar = async (msg) => {
+      guardarCatalogoLocal();
+      refrescarAdmin();
+      try { await guardarCatalogoNube(); const st = $('#admin-estado'); if (st) st.textContent = msg; }
+      catch (err) { const st = $('#admin-estado'); if (st) st.textContent = '❌ No se pudo guardar en la nube: ' + err.message; }
+    };
+    $$('#sec-revision [data-aprobar-foto]').forEach((b) => (b.onclick = async () => {
+      const id = b.dataset.aprobarFoto;
+      const s = sugerenciaFoto(id); const p = productoPorId(id);
+      if (!s || !p) return;
+      b.disabled = true; b.textContent = 'Aprobando…';
+      try {
+        // Se copia la imagen al producto; al guardar se sube a Storage como cualquier otra foto
+        const blob = await (await fetch(s.foto, { cache: 'no-store' })).blob();
+        if (!blob.type.startsWith('image/')) throw new Error('El archivo sugerido no es una imagen.');
+        p.foto = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('No se pudo leer la imagen.')); fr.readAsDataURL(blob); });
+        estadosRevision()[id] = { estado: 'aprobada', foto: s.foto, fecha: hoy };
+        await guardar(`✅ Foto aprobada: ${p.nombre}`);
+      } catch (err) { b.disabled = false; b.textContent = 'Aprobar'; alert(err.message); }
+    }));
+    $$('#sec-revision [data-rechazar-foto]').forEach((b) => (b.onclick = async () => {
+      const id = b.dataset.rechazarFoto;
+      const s = sugerenciaFoto(id); const p = productoPorId(id);
+      if (!s || !p) return;
+      estadosRevision()[id] = { estado: 'rechazada', foto: s.foto, fuentes: s.fuentes || [], fecha: hoy };
+      await guardar(`Foto rechazada: ${p.nombre}. No se volverá a proponer.`);
+    }));
+  }
+
   async function guardarCatalogoNube() {
     if (!sesionAdmin) throw new Error('Inicia sesión primero.');
     if (!catalogoDeNube) throw new Error('No se pudo leer el catálogo de la nube al abrir la tienda. Recarga la página con conexión antes de guardar, para no sobrescribir los productos de la nube.');
+    const estado = () => document.getElementById('admin-estado');
+    await moverFotosANube((n, total) => { const s = estado(); if (s) s.textContent = `⏳ Subiendo fotos al almacenamiento: ${n} de ${total}…`; });
+    if (storageNoDisponible) {
+      const s = estado();
+      if (s) s.textContent = 'ℹ️ Las fotos se guardan dentro del catálogo porque falta activar el almacenamiento de fotos (supabase/tienda-fotos.sql).';
+    }
     const r = await fetch(`${NUBE.url}/rest/v1/tienda`, {
       method: 'POST',
       headers: { apikey: NUBE.clave, Authorization: 'Bearer ' + sesionAdmin.access_token, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
@@ -1570,12 +1753,15 @@
           </div>
           <div class="admin-rapido-grupo">
             <span class="admin-rapido-label">Ir a</span>
+            ${fotosEnRevision().length ? `<a href="#" class="admin-rapido-link admin-rapido-revision" data-ir="sec-revision">Fotos en revisión (${fotosEnRevision().length})</a>` : ''}
             <a href="#" class="admin-rapido-link" data-ir="sec-productos">Productos</a>
             <a href="#" class="admin-rapido-link" data-ir="sec-vehiculos">Vehículos</a>
             <a href="#" class="admin-rapido-link" data-ir="sec-marcas">Marcas</a>
             <a href="#" class="admin-rapido-link" data-ir="sec-categorias">Categorías</a>
           </div>
         </nav>
+
+        <section class="seccion" id="sec-revision" ${fotosEnRevision().length ? '' : 'hidden'}></section>
 
         <section class="seccion">
           <div class="seccion-head"><h2>Configuración de la página</h2></div>
@@ -1671,15 +1857,17 @@
             </div>
           </div>
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-            <input id="admin-buscar-prod" placeholder="Buscar producto por nombre, vehículo, marca o altura…" style="flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--linea-fuerte);border-radius:8px;font:inherit">
+            <input id="admin-buscar-prod" type="search" value="${esc(filtroProdAdmin.q)}" placeholder="Buscar producto por nombre, vehículo, marca o altura…" style="flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--linea-fuerte);border-radius:8px;font:inherit">
             <select id="admin-filtro-prod" style="padding:10px 12px;border:1px solid var(--linea-fuerte);border-radius:8px;font:inherit">
               <option value="">Todos los productos</option>
-              <option value="sin-foto">Solo sin foto</option>
-              ${categorias().map((c) => `<option value="cat:${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}
+              <option value="sin-foto" ${filtroProdAdmin.filtro === 'sin-foto' ? 'selected' : ''}>Solo sin foto</option>
+              <option value="revision" ${filtroProdAdmin.filtro === 'revision' ? 'selected' : ''}>Con foto en revisión</option>
+              ${categorias().map((c) => `<option value="cat:${esc(c.id)}" ${filtroProdAdmin.filtro === 'cat:' + c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
             </select>
           </div>
           <div class="grid" id="lista-productos"></div>
         </section>`;
+      pintarRevisionFotos();
       pintarListaFAQs();
       pintarListaCategorias();
       pintarListaMerchTipos();
@@ -1751,8 +1939,8 @@
       loteCard.ondragleave = () => loteCard.classList.remove('soltar');
       loteCard.ondrop = (e) => { e.preventDefault(); loteCard.classList.remove('soltar'); aplicarFotoLote(e.dataTransfer.files[0]); };
 
-      $('#admin-buscar-prod').oninput = () => pintarListaProductos();
-      $('#admin-filtro-prod').onchange = () => pintarListaProductos();
+      $('#admin-buscar-prod').oninput = (e) => { filtroProdAdmin.q = e.target.value; pintarListaProductos(); };
+      $('#admin-filtro-prod').onchange = (e) => { filtroProdAdmin.filtro = e.target.value; pintarListaProductos(); };
 
       // --- Foto del hero ---
       const pintarHeroPreview = () => {
@@ -2024,6 +2212,7 @@
       const filtro = $('#admin-filtro-prod')?.value || '';
       const filtrados = productos().filter((p) => {
         if (filtro === 'sin-foto' && p.foto) return false;
+        if (filtro === 'revision' && !sugerenciaFoto(p.id)) return false;
         if (filtro.startsWith('cat:') && p.categoria !== filtro.slice(4)) return false;
         if (!qTxt) return true;
         const compTxt = (p.compatibles || []).map((c) => `${c.marca} ${c.modelo} ${c.genNombre || ''}`).join(' ');
@@ -2037,7 +2226,7 @@
             <input type="file" accept="image/*" data-prod-foto-rapida="${esc(p.id)}" hidden>
           </label>
           <div style="flex:1;min-width:0">
-            <div class="nombre">${esc(p.nombre)}</div>
+            <div class="nombre">${esc(p.nombre)}${sugerenciaFoto(p.id) ? ' <span class="badge-revision">Foto en revisión</span>' : ''}</div>
             <div class="hint">${esc(categorias().find((c) => c.id === p.categoria)?.nombre || p.categoria)} · ${esc(p.marca || '—')}${p.altura ? ' · Elev. ' + esc(p.altura) : ''} · ${fmt(p.precio)} · ${(p.compatibles || []).length ? p.compatibles.map((c) => esc(c.modelo + (c.genNombre ? ' (' + c.genNombre + ')' : ''))).join(', ') : 'universal'}</div>
           </div>
           <button class="btn ghost" data-editar-prod="${esc(p.id)}">Editar</button>
@@ -2125,13 +2314,13 @@
       document.removeEventListener('paste', alPegar);
       const lista = marcas();
       if (nuevo) catalogo.marcas.push(m);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
     };
     $('#marca-borrar')?.addEventListener('click', async () => {
       if (!confirm('¿Eliminar esta marca?')) return;
       catalogo.marcas = catalogo.marcas.filter((x) => x.id !== m.id);
       document.removeEventListener('paste', alPegar);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
     });
     const cancelar = $('#form-marca [data-act="cerrar"]');
     cancelar.onclick = () => { document.removeEventListener('paste', alPegar); cerrarModal(); };
@@ -2245,13 +2434,24 @@
       }
       document.removeEventListener('paste', alPegar);
       if (nuevo) catalogo.vehiculos.push(v);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
     };
     $('#veh-borrar')?.addEventListener('click', async () => {
-      if (!confirm('¿Eliminar este vehículo?')) return;
-      catalogo.vehiculos = catalogo.vehiculos.filter((x) => x.id !== v.id);
+      // Borrado en cascada: los productos que son SOLO para este vehículo se eliminan con él;
+      // los que también sirven para otros vehículos se conservan sin este vehículo.
+      const { soloEste, compartidos } = productosDeVehiculo(v);
+      const lista = soloEste.slice(0, 10).map((p) => '• ' + p.nombre).join('\n') + (soloEste.length > 10 ? `\n… y ${soloEste.length - 10} más` : '');
+      const msg = `¿Eliminar ${v.marca} ${v.modelo}?\n\n`
+        + (soloEste.length ? `También se eliminarán ${soloEste.length} producto(s) que son solo para este vehículo:\n${lista}\n` : 'No hay productos que sean solo para este vehículo.\n')
+        + (compartidos.length ? `\n${compartidos.length} producto(s) que también sirven para otros vehículos se conservan (dejan de aparecer para este).\n` : '')
+        + '\nSe guarda en la nube y no se puede deshacer.';
+      if (!confirm(msg)) return;
+      eliminarVehiculoEnCascada(v);
       document.removeEventListener('paste', alPegar);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
+      guardarCatalogoNube()
+        .then(() => { const s = $('#admin-estado'); if (s) s.textContent = `✅ ${v.marca} ${v.modelo} eliminado${soloEste.length ? ` junto con ${soloEste.length} producto(s)` : ''}.`; })
+        .catch((err) => { const s = $('#admin-estado'); if (s) s.textContent = '❌ No se pudo guardar en la nube: ' + err.message; });
     });
     $('#form-veh [data-act="cerrar"]').onclick = () => { document.removeEventListener('paste', alPegar); cerrarModal(); };
   }
@@ -2483,7 +2683,7 @@
       else p.opciones = null;
       document.removeEventListener('paste', alPegar);
       if (nuevo) catalogo.productos.push(p);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
       // Guardado automático en la nube (si no, al recargar se pierde el cambio)
       guardarCatalogoNube()
         .then(() => { const s = $('#admin-estado'); if (s) s.textContent = '✅ Producto guardado en la nube.'; })
@@ -2493,7 +2693,7 @@
       if (!confirm('¿Eliminar este producto?')) return;
       catalogo.productos = catalogo.productos.filter((x) => x.id !== p.id);
       document.removeEventListener('paste', alPegar);
-      cerrarModal(); guardarCatalogoLocal(); vistaAdmin();
+      cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
     });
     $('#form-prod [data-act="cerrar"]').onclick = () => { document.removeEventListener('paste', alPegar); cerrarModal(); };
   }
@@ -2725,6 +2925,15 @@
       guardarCatalogoLocal();
     }
 
+    // Migración (una vez, 25-11-2026): el admin eliminó la Chevrolet Tahoe, pero volvía a aparecer
+    // al recargar (la lista de arranque la recreaba). Se elimina junto con sus productos.
+    if (!cfg.migradoBorrarTahoe1) {
+      const tahoe = vehiculos().find((v) => v.marca === 'Chevrolet' && v.modelo === 'Tahoe');
+      if (tahoe) eliminarVehiculoEnCascada(tahoe);
+      cfg.migradoBorrarTahoe1 = true;
+      guardarCatalogoLocal();
+    }
+
     // Normalizador permanente de variantes/duplicados de modelos:
     // - "Autana" -> "Land Cruiser S80" (veh-toyota-autana)
     // - "Merú / Prado" / "Prado / Meru" / "Land Cruiser S90" -> "Land Cruiser Serie 90" (veh-toyota-meru-prado)
@@ -2861,7 +3070,9 @@
         }
       };
 
-      VEHICULOS_INICIAL.forEach((vIni) => registrar(vIni, false));
+      // La lista de arranque solo se usa si no hay vehículos guardados: si se mezclara siempre,
+      // los vehículos que el admin elimina (p. ej. la Tahoe) volverían a aparecer al recargar.
+      if (!previos.length) VEHICULOS_INICIAL.forEach((vIni) => registrar(vIni, false));
       previos.forEach((vPrev) => registrar(vPrev, true));
       catalogo.vehiculos = resultado;
     }

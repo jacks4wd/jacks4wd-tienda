@@ -396,13 +396,6 @@ const VEHICULOS = [
     ]
   },
   {
-    "id": "veh-chevrolet-tahoe",
-    "marca": "Chevrolet",
-    "modelo": "Tahoe",
-    "foto": "",
-    "generaciones": []
-  },
-  {
     "id": "veh-ford-explorer",
     "marca": "Ford",
     "modelo": "Explorer",

@@ -2400,3 +2400,50 @@ dialog#modal::backdrop { background: rgba(0,0,0,.58); }
   .cargando-escena *, .cg-punto { animation: none !important; }
   .cg-roca { transform: translateX(-40px); }
 }
+
+/* ===================== ADMIN · FOTOS EN REVISIÓN ===================== */
+.admin-rapido-revision { color: var(--primary); text-decoration-color: var(--primary); font-weight: 700; }
+.badge-revision {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff3eb;
+  border: 1px solid #f0b48f;
+  color: #8f2d05;
+  font-size: .74rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.revision-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.revision-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #f0b48f;
+  border-radius: var(--radio);
+  box-shadow: var(--sombra-sm);
+}
+.revision-foto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-sm);
+}
+.revision-foto img { width: 100%; height: 100%; object-fit: contain; }
+.revision-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.revision-info strong { font-size: .95rem; line-height: 1.3; }
+.revision-nota { margin: 2px 0 0; font-size: .84rem; line-height: 1.45; color: var(--texto-suave); }
+.revision-fuentes { font-size: .82rem; color: var(--muted); }
+.revision-fuentes a { color: var(--primary); font-weight: 700; text-underline-offset: 3px; }
+.revision-acciones { display: flex; gap: 8px; margin-top: auto; }
+.revision-acciones .btn { flex: 1; }
