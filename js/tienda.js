@@ -317,7 +317,9 @@
   }
   function productoCompatibleConVeh(p, veh) {
     if (!veh) return true;
-    if (!Array.isArray(p.compatibles) || !p.compatibles.length) return true;
+    // Con un vehículo elegido solo cuentan los productos asociados a él: los que no tienen
+    // vehículo (faros y accesorios universales) se ven al navegar sin filtro de vehículo.
+    if (!Array.isArray(p.compatibles) || !p.compatibles.length) return false;
     // Solo marca elegida (filtro instantáneo del catálogo): cualquier modelo de esa marca
     if (!veh.modelo) return p.compatibles.some((c) => c.marca === veh.marca);
     const vDef = vehiculos().find((v) => v.marca === veh.marca && v.modelo === veh.modelo);
@@ -484,7 +486,11 @@
       const v = vehiculos().find((x) => x.marca === marca && x.modelo === modelo);
       const gens = v?.generaciones || [];
       selGen.innerHTML = '<option value="">Todas las generaciones</option>' +
-        gens.map((g) => `<option value="${esc(g.nombre)}" ${g.nombre === genSel ? 'selected' : ''}>${esc(g.nombre)}</option>`).join('');
+        gens.map((g) => {
+          // Igual que en el carrusel del inicio: nombre de la generación y sus años
+          const anios = rangoAnios(g.anios);
+          return `<option value="${esc(g.nombre)}" ${g.nombre === genSel ? 'selected' : ''}>${esc(String(g.nombre).trim())}${anios ? ` (${esc(anios)})` : ''}</option>`;
+        }).join('');
       selGen.disabled = !modelo || !gens.length;
       if (modelo && !genSel && gens.length === 1) selGen.value = gens[0].nombre;
     };
