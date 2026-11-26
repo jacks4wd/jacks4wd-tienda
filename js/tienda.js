@@ -575,7 +575,7 @@
     const catSusp = (categorias().find((c) => c.id === 'suspension') || categorias().find((c) => c.id !== 'merch') || categorias()[0] || {}).id || 'suspension';
     const heroStyle = cfg.heroFoto ? `style="--hero-bg-img: url('${esc(cfg.heroFoto)}')"` : '';
     const marcasVeh = [...new Set(vehs.map((v) => v.marca).filter(Boolean))];
-    let marcaVehActiva = vehActivo?.marca && marcasVeh.includes(vehActivo.marca) ? vehActivo.marca : (marcasVeh[0] || '');
+    let marcaVehActiva = ''; // el carrusel arranca en "Todas"
 
     const htmlTarjetasVeh = (lista) => lista.map((v) => {
       const gens = v.generaciones || [];
@@ -660,15 +660,15 @@
             </div>
             ${marcasVeh.length > 1 ? `
             <div class="build-marcas-tabs" id="veh-marcas-tabs" role="tablist" aria-label="Marca del vehículo">
+              <button type="button" class="build-marca-tab ${!marcaVehActiva ? 'on' : ''}" data-vmarca="">
+                <span>Todas</span><span class="build-marca-cnt">${vehs.length}</span>
+              </button>
               ${marcasVeh.map((m) => {
                 const cnt = vehs.filter((v) => v.marca === m).length;
                 return `<button type="button" class="build-marca-tab ${m === marcaVehActiva ? 'on' : ''}" data-vmarca="${esc(m)}">
                   <span>${esc(m)}</span><span class="build-marca-cnt">${cnt}</span>
                 </button>`;
               }).join('')}
-              <button type="button" class="build-marca-tab ${!marcaVehActiva ? 'on' : ''}" data-vmarca="">
-                <span>Todas</span><span class="build-marca-cnt">${vehs.length}</span>
-              </button>
             </div>` : ''}
             <div class="build-carrusel">
               <button type="button" class="build-flecha build-flecha-prev" id="veh-prev" aria-label="Vehículos anteriores" aria-controls="vehiculos-home">
@@ -800,7 +800,10 @@
     const cat = esTodo ? null : cats.find((c) => c.id === categoria);
 
     const q = hashQuery();
-    let vehActivo = sincronizarVehDesdeURL();
+    // Desde el menú por marca (…?marca=X sin vehículo en la URL) se muestra TODO el catálogo de esa
+    // marca: el vehículo recordado no se aplica, o la marca se descartaba si no tenía kits para él.
+    const vistaPorMarca = Boolean(q.get('marca')) && !q.get('vMarca');
+    let vehActivo = vistaPorMarca ? null : sincronizarVehDesdeURL();
     let selSub = q.get('sub') || '';
     let selMarca = q.get('marca') || '';
     let selAltura = q.get('altura') || '';
