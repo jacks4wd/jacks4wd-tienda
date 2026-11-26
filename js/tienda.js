@@ -3092,6 +3092,199 @@
       guardarCatalogoLocal();
     }
 
+    // Migración (una vez, 26-11-2026): se eliminan las tapas de cajón que quedaron sin foto
+    // (sin foto encontrada o foto rechazada en Administrar).
+    if (!cfg.migradoBedcoversSinFoto1) {
+      const sinFoto = new Set([
+        'rollnlock-rc530e', 'rollnlock-bt532a', 'rollnlock-lg532m', 'bakflip-448410t',
+        'rollnlock-bt570a', 'rollnlock-bt571a', 'rollnlock-rc570e', 'rollnlock-rc571e',
+        'rollnlock-bt575a', 'rollnlock-bt576a', 'bakflip-226414', 'ruggedliner-fcthv506',
+        'bakflip-448310', 'rollnlock-lg614m', 'bakflip-448318', 'rollnlock-lg122m',
+        'rollnlock-lg124m', 'rollnlock-bt124a',
+      ]);
+      if (Array.isArray(catalogo.productos)) {
+        // Solo se borra si de verdad sigue sin foto (por si se le subió una a mano)
+        catalogo.productos = catalogo.productos.filter((p) => !(sinFoto.has(p.id) && !p.foto && !(p.fotos || []).length));
+      }
+      cfg.migradoBedcoversSinFoto1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 26-11-2026): alfombras WeatherTech de la lista "Precios Mayor 2026 V2"
+    // (precio de detal de la lista). Solo vehículos que existen en la tienda; los universales van
+    // sin vehículo. Se ignoran los de vehículos que no están (Corolla, Camry, Gladiator, etc.).
+    if (!cfg.migradoWeatherTech1) {
+      const prods = (catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : []);
+      const porId = (id) => prods.find((p) => p.id === id);
+      const vehDe = (marca, modelo) => vehiculos().find((v) => v.marca === marca && v.modelo === modelo);
+      const gen = (marca, modelo, pista) => (vehDe(marca, modelo)?.generaciones || []).find((g) => String(g.nombre).toLowerCase().includes(pista))?.nombre || '';
+      const C = (marca, modelo, pista) => {
+        if (!vehDe(marca, modelo)) return null;
+        const c = { marca, modelo, anios: [] };
+        const g = pista ? gen(marca, modelo, pista) : '';
+        if (g) c.genNombre = g;
+        return c;
+      };
+      const V = {
+        fortA: C('Toyota', 'Fortuner', '1era'), fortB: C('Toyota', 'Fortuner', '2da'),
+        kavak: C('Toyota', 'Hilux', 'kavak'), revo: C('Toyota', 'Hilux', 'revo'), gr: C('Toyota', 'Hilux', 'gr'),
+        r4ta: C('Toyota', '4Runner', '4ta'), r5ta: C('Toyota', '4Runner', '5ta'), r6ta: C('Toyota', '4Runner', '6ta'),
+        lc250: C('Toyota', 'Land Cruiser LC250'), prado150: C('Toyota', 'Prado S150'),
+        meru: C('Toyota', 'Land Cruiser Serie 90', 'meru'), prado90: C('Toyota', 'Land Cruiser Serie 90', 'prado'),
+        tunA: C('Toyota', 'Tundra', '2007'), tunB: C('Toyota', 'Tundra', '2022'),
+        tacB: C('Toyota', 'Tacoma', '2016'), tacC: C('Toyota', 'Tacoma', '2024'),
+        lc200: C('Toyota', 'Roraima Serie 200'), lc300: C('Toyota', 'Land Cruiser 300'),
+        s76: C('Toyota', 'Land Cruiser 70 series', 's76'), s79: C('Toyota', 'Land Cruiser 70 series', 's79'),
+        autana: C('Toyota', 'Land Cruiser S80'), fj: C('Toyota', 'FJ Cruiser'), seqB: C('Toyota', 'Sequoia', '2022'),
+        montSport: C('Mitsubishi', 'Montero / Pajero', 'sport'), l200: C('Mitsubishi', 'L200', '2015'),
+        explorer: C('Ford', 'Explorer'), f250: C('Ford', 'F-250 / F-350'), bronco: C('Ford', 'Bronco'),
+        px3: C('Ford', 'Ranger', 'px3'), my22: C('Ford', 'Ranger', 'my22'),
+        kk: C('Jeep', 'Cherokee', 'kk'), wk: C('Jeep', 'Grand Cherokee', '3era'), wk2: C('Jeep', 'Grand Cherokee', '4ta'),
+        jk: C('Jeep', 'Rubicon / Wrangler JK'), jl: C('Jeep', 'Rubicon / Wrangler JL'),
+        jimny: C('Suzuki', 'Jimny'), luv: C('Chevrolet', 'Luv D-Max'), kaicene: C('Changan', 'Kaicene F70'),
+      };
+
+      // Marca y subcategorías
+      catalogo.marcas = Array.isArray(catalogo.marcas) ? catalogo.marcas : [];
+      if (!catalogo.marcas.some((x) => x.nombre.toLowerCase() === 'weathertech')) {
+        catalogo.marcas.push({ id: 'weathertech', nombre: 'WeatherTech', descripcion: 'Alfombras y protectores de maletero a la medida de cada vehículo, fabricados en EE. UU.', logo: '' });
+      }
+      const catAcc = (cfg.categorias || []).find((c) => c.id === 'accesorio');
+      if (catAcc) {
+        catAcc.subcategorias = Array.isArray(catAcc.subcategorias) ? catAcc.subcategorias : [];
+        if (!catAcc.subcategorias.some((s) => s.id === 'alfombras')) catAcc.subcategorias.push({ id: 'alfombras', nombre: 'Alfombras y cargoliners' });
+        if (!catAcc.subcategorias.some((s) => s.id === 'interior')) catAcc.subcategorias.push({ id: 'interior', nombre: 'Accesorios de interior' });
+      }
+
+      const DESC = {
+        combo: 'Combo WeatherTech a la medida: alfombras delanteras y traseras FloorLiner + protector de maletero Cargoliner.',
+        floor: 'Alfombras WeatherTech FloorLiner a la medida (delanteras y traseras), con bordes altos que retienen agua y barro.',
+        floorhp: 'Alfombras WeatherTech FloorLiner HP a la medida (delanteras y traseras), de material más flexible y con mejor agarre.',
+        cargo: 'Protector de maletero WeatherTech Cargoliner a la medida, con bordes altos.',
+        fila3: 'Alfombra WeatherTech FloorLiner a la medida para la tercera fila.',
+      };
+      // [código, tipo, nombre visible, precio detal, vehículos, piezas]
+      const wt = [
+        ['WTFortunerVzla', 'combo', 'Combo Fortuner 2012-2020 3 filas beige', 450, ['fortA'], '455121+451003+451004+41382'],
+        ['WTFortunerVzlaNeg', 'combo', 'Combo Fortuner 2012-2020 3 filas negro', 450, ['fortA'], '445121+441003+441004+40382'],
+        ['WTFortuner2005', 'combo', 'Combo Fortuner 2005-2011 2 filas beige (sin 3.ª fila)', 370, ['fortA'], '451001+451003+41319'],
+        ['WTFortunerDubai', 'combo', 'Combo Fortuner Dubai 3 filas negro', 440, ['fortB'], '448771+448773+448774+40894'],
+        ['WTKavak2005-11', 'floor', 'Alfombras Hilux Kavak 2005-2010 grises', 250, ['kavak'], '461001+465122'],
+        ['WTKavak2012-17', 'floor', 'Alfombras Hilux Kavak 2011-2020 grises', 250, ['kavak'], '465121-2'],
+        ['WTKavak2012-17Neg', 'floor', 'Alfombras Hilux Kavak 2011-2020 negras', 250, ['kavak'], '445121-2'],
+        ['WTRevo', 'floor', 'Alfombras Hilux Revo 2015+ negras', 250, ['revo', 'gr'], '448771-2'],
+        ['WT4runner2004Beige', 'combo', 'Combo 4Runner 2003-2009 beige', 380, ['r4ta'], '450111-2+41230'],
+        ['WT4runner2004Gris', 'combo', 'Combo 4Runner 2003-2009 gris', 380, ['r4ta'], '460111-2+42230'],
+        ['WT4runner2004Negro', 'combo', 'Combo 4Runner 2003-2009 negro', 380, ['r4ta'], '440111-2+40230'],
+        ['WT4runner2010-18', 'combo', 'Combo 4Runner 2010-2024 negro (no TRD Pro)', 380, ['r5ta'], '444931+442862+40486'],
+        ['WT4runner2010-18TRD', 'combo', 'Combo 4Runner 2014-2024 TRD Pro negro', 380, ['r5ta'], '444931+442862+40440'],
+        ['WT4runner2010+HP', 'floorhp', 'Alfombras HP 4Runner 2010-2024 negras', 270, ['r5ta'], '444931IM+442862IM'],
+        ['40486', 'cargo', 'Cargoliner 4Runner 2010-2024 negro (no TRD Pro)', 150, ['r5ta'], '40486'],
+        ['40440', 'cargo', 'Cargoliner 4Runner 2010-2024 TRD Pro negro', 150, ['r5ta'], '40440'],
+        ['WT4runner2025+', 'floor', 'Alfombras 4Runner 2025+ negras (no híbrida)', 250, ['r6ta'], '4419191-2'],
+        ['WT4runner2025+Iforce', 'floor', 'Alfombras 4Runner 2025+ negras (híbrida i-FORCE MAX)', 250, ['r6ta'], '441919-1-4'],
+        ['WT4runner2025+HP', 'floorhp', 'Alfombras HP 4Runner 2025+ negras (no híbrida)', 270, ['r6ta'], '441919-1-2IM'],
+        ['4419193', 'fila3', 'Alfombra tercera fila 4Runner 2025+', 105, ['r6ta'], '4419193'],
+        ['401828', 'cargo', 'Cargoliner 4Runner 2025+ 2 filas negro', 165, ['r6ta'], '401828'],
+        ['401829', 'cargo', 'Cargoliner 4Runner 2025+ 3 filas negro', 165, ['r6ta'], '401829'],
+        ['401831', 'cargo', 'Cargoliner 4Runner 2025+ híbrida 2 filas negro', 160, ['r6ta'], '401831'],
+        ['WTLC250/GX-COOL', 'floorhp', 'Alfombras HP Land Cruiser LC250 2024+ 2 filas negras (con Cooling System)', 270, ['lc250'], '441874-1-2IM'],
+        ['WTLC250/GX-NOCOOL', 'floorhp', 'Alfombras HP Land Cruiser LC250 2024+ 2 filas negras (sin Cooling System)', 270, ['lc250'], '441874-1-3IM'],
+        ['401773', 'cargo', 'Cargoliner Land Cruiser LC250 2024+ 2 filas (modelo americano)', 165, ['lc250'], '401773'],
+        ['401774', 'cargo', 'Cargoliner Land Cruiser LC250 2024+ 2 filas (modelo japonés)', 165, ['lc250'], '401774'],
+        ['401775', 'cargo', 'Cargoliner Land Cruiser LC250 2024+ 3 filas, 3.ª fila recogida (modelo japonés)', 165, ['lc250'], '401775'],
+        ['401776', 'cargo', 'Cargoliner Land Cruiser LC250 2024+ 3 filas, corto (modelo japonés)', 160, ['lc250'], '401776'],
+        ['4418745IM', 'fila3', 'Alfombra tercera fila Land Cruiser LC250 negra', 115, ['lc250'], '4418745IM'],
+        ['WTPrado2018-2021', 'combo', 'Combo Prado 2018-2023 negro', 380, ['prado150'], '4415461+442862+40457'],
+        ['WTMeru', 'combo', 'Combo Merú gris', 380, ['meru'], '461011-2+42320'],
+        ['WTMeruNeg', 'combo', 'Combo Merú negro', 380, ['meru'], '441011-2+40320'],
+        ['WTPrado2000', 'floor', 'Alfombras Prado 2000-2007 grises', 250, ['prado90'], '460771-2'],
+        ['WTPrado2000Cargo2g', 'cargo', 'Cargoliner Prado 2000-2007 2 filas gris', 160, ['prado90'], '42103'],
+        ['WTTundra2014+5.5', 'floor', 'Alfombras Tundra 2014-2021 negras (cajón de 5,5 pies)', 270, ['tunA'], '444081+440938'],
+        ['WTTundra2014+6.5', 'floor', 'Alfombras Tundra 2014-2021 negras (cajón de 6,5 pies)', 270, ['tunA'], '444081+440939'],
+        ['WTTundra2022Crew', 'floor', 'Alfombras Tundra 2022+ negras (Crew Max, cajón de 5,5 pies)', 270, ['tunB'], '4417081-2'],
+        ['WTTundra2022Dobl', 'floor', 'Alfombras Tundra 2022+ negras (Double Cab, cajón de 6,5 pies)', 270, ['tunB'], '4417081-3'],
+        ['WTTacoma16-17', 'floor', 'Alfombras Tacoma 2016-2017 negras', 240, ['tacB'], '448671+448722'],
+        ['WTTacoma', 'floor', 'Alfombras Tacoma 2018-2023 negras', 240, ['tacB'], '4412991+448722'],
+        ['WTTacoma2024+HP', 'floorhp', 'Alfombras HP Tacoma 2024+ negras', 260, ['tacC'], '441846-1-3IM'],
+        ['WTRoraima', 'combo', 'Combo Roraima 2007-2021 negro', 400, ['lc200'], '444231+441572+40356'],
+        ['WTRoraimaBeige', 'combo', 'Combo Roraima 2007-2021 beige', 400, ['lc200'], '454231+451572+41356'],
+        ['WTLC300', 'combo', 'Combo Land Cruiser 300 / LX600 2022+ 3 filas negro', 490, ['lc300'], '4417131-2-3+401521'],
+        ['WTLC300Beige', 'combo', 'Combo Land Cruiser 300 / LX600 2022+ 3 filas beige', 490, ['lc300'], '4517131-2-3+411521'],
+        ['WTSerie76/79', 'floor', 'Alfombras Land Cruiser Serie 76 / 79 2010-2025 negras', 250, ['s76', 's79'], '441899-1-2V'],
+        ['WTSerie76/79Be', 'floor', 'Alfombras Land Cruiser Serie 76 / 79 2010-2025 beige', 250, ['s76', 's79'], '451899-1-2V'],
+        ['WTAutana', 'combo', 'Combo Autana / Burbuja 1993-2007 beige', 390, ['autana'], '45533-1-2+41010'],
+        ['WTAutanaNeg', 'combo', 'Combo Autana / Burbuja 1993-2007 negro', 390, ['autana'], '44533-1-2+40010'],
+        ['WTMontSportFloor', 'floor', 'Alfombras Montero Sport 2014-2018 negras', 240, ['montSport'], '447551-2'],
+        ['WTMontSportCargo', 'cargo', 'Cargoliner Montero Sport 2014-2018 negro', 150, ['montSport'], '40489'],
+        ['WTMontSport2019', 'combo', 'Combo Montero Sport 2019+ 3 filas negro', 465, ['montSport'], '44970-1-2-3+40914'],
+        ['WTL200', 'floor', 'Alfombras Mitsubishi L200 2015-2024 negras', 240, ['l200'], '44879-1-2'],
+        ['WTExplorer11-14', 'combo', 'Combo Explorer 2011-2014 3 filas negro', 465, ['explorer'], '443591-2-3+40489'],
+        ['WTExplorer15-20', 'combo', 'Combo Explorer 2015-2020 3 filas negro', 465, ['explorer'], '447041+443592-3+40489'],
+        ['WTExplorerST2021', 'combo', 'Combo Explorer ST 2021+ 3 filas negro', 465, ['explorer'], '4415751-2-4+401304'],
+        ['WTF250-2ptas', 'floor', 'Alfombras F-250 2011-2016 2 puertas negras', 150, ['f250'], '443211'],
+        ['WTF250-4ptas', 'floor', 'Alfombras F-250 2011-2013 4 puertas negras', 260, ['f250'], '443211+443052'],
+        ['WTLibertyKK', 'combo', 'Combo Cherokee KK (Liberty) 2008-2015 negro', 360, ['kk'], '443881+441402+40366'],
+        ['WTWK05-10', 'combo', 'Combo Grand Cherokee WK / Commander 2005-2010 negro', 360, ['wk'], '440131+440132+40280'],
+        ['WTWK2-11-13', 'combo', 'Combo Grand Cherokee WK2 2011-2013 negro', 365, ['wk2'], '443241+443242+40469'],
+        ['WTWK2-14-18', 'combo', 'Combo Grand Cherokee WK2 2014-2020 negro', 365, ['wk2'], '444851+443242+40469'],
+        ['WTFJCruiser', 'combo', 'Combo FJ Cruiser 2007-2024 negro', 360, ['fj'], '443111+443112+40300'],
+        ['WTSequoia2023', 'combo', 'Combo Sequoia 2023+ negro', 480, ['seqB'], '441784-1-2-3+401571'],
+        ['WTKaiceneHunter', 'floor', 'Alfombras Kaicene F70 / Changan Hunter 2020+ negras', 250, ['kaicene'], '4416881-2'],
+        ['WTLuvD-MAX', 'floor', 'Alfombras Luv D-Max 2005-2014 negras', 250, ['luv'], '440991-2'],
+        ['WTRanger2020', 'floor', 'Alfombras Ranger 2020-2023 negras', 250, ['px3'], '4416401+4415182'],
+        ['WTRanger2024', 'floor', 'Alfombras Ranger MY22 / Raptor 2024+ negras', 240, ['my22'], '4418361-2'],
+        ['WTBronco2022', 'floor', 'Alfombras Bronco 2022+ 4 puertas negras', 240, ['bronco'], '4416951-3'],
+        ['WTBronco2022cargo', 'cargo', 'Cargoliner Bronco 2022+ 4 puertas negro', 150, ['bronco'], '401477'],
+        ['WTJeepJK14-18', 'floor', 'Alfombras Jeep Wrangler JK 2014-2017 4 puertas', 240, ['jk'], '445731-2'],
+        ['WTJeepJL42018+', 'floor', 'Alfombras Jeep Wrangler JL 2018+ 4 puertas', 240, ['jl'], '4413131-2'],
+        ['WTJimny2ptasAuto', 'floor', 'Alfombras Jimny 2 puertas 2020+ (automático)', 240, ['jimny'], '4416911+4415272'],
+        ['WTJimny2ptasSinc', 'floor', 'Alfombras Jimny 2 puertas 2020+ (sincrónico)', 240, ['jimny'], '4415271-2'],
+        ['401494', 'cargo', 'Cargoliner Jimny 2 puertas 2020+', 150, ['jimny'], '401494'],
+      ];
+      const idWT = (cod) => 'weathertech-' + cod.toLowerCase().replace(/\+/g, 'plus').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      wt.forEach(([cod, tipo, nombre, precio, vehs, piezas]) => {
+        const id = idWT(cod);
+        if (porId(id)) return;
+        const compat = vehs.map((k) => V[k]).filter(Boolean).map((c) => ({ ...c }));
+        if (!compat.length) return; // el vehículo ya no está en la tienda
+        prods.push({ id, nombre: `${nombre} WeatherTech`, categoria: 'accesorio', subcategoria: 'alfombras', marca: 'WeatherTech', altura: '', precio, foto: '',
+          descripcion: `${DESC[tipo]} Piezas ${piezas}.`, compatibles: compat });
+      });
+
+      // Universales (sin vehículo)
+      [
+        ['11AVMSB', 'alfombras', 'Alfombras universales WeatherTech negras (4 piezas)', 65, 'Alfombras universales recortables, para cualquier vehículo.'],
+        ['11AVMST', 'alfombras', 'Alfombras universales WeatherTech beige (4 piezas)', 65, 'Alfombras universales recortables, para cualquier vehículo.'],
+        ['11AVMSG', 'alfombras', 'Alfombras universales WeatherTech grises (4 piezas)', 65, 'Alfombras universales recortables, para cualquier vehículo.'],
+        ['11AVMOTHSB', 'alfombras', 'Alfombras universales WeatherTech negras corridas (3 piezas)', 65, 'Juego universal con alfombra trasera de una sola pieza.'],
+        ['11AVMOTHST', 'alfombras', 'Alfombras universales WeatherTech beige corridas (3 piezas)', 65, 'Juego universal con alfombra trasera de una sola pieza.'],
+        ['11AVMOTHSG', 'alfombras', 'Alfombras universales WeatherTech grises corridas (3 piezas)', 65, 'Juego universal con alfombra trasera de una sola pieza.'],
+        ['11AVMCB', 'alfombras', 'Cargoliner universal WeatherTech negro', 65, 'Protector de maletero universal recortable.'],
+        ['11AVMCT', 'alfombras', 'Cargoliner universal WeatherTech beige', 65, 'Protector de maletero universal recortable.'],
+        ['11AVMCG', 'alfombras', 'Cargoliner universal WeatherTech gris', 65, 'Protector de maletero universal recortable.'],
+        ['11AVMSBHD', 'alfombras', 'Alfombras universales WeatherTech Heavy Duty negras', 80, 'Alfombras universales de uso pesado, recortables.'],
+        ['8LTC36KPB', 'interior', 'Kit de limpieza y protector para alfombras WeatherTech', 40, 'Limpiador y protector para alfombras y cargoliners WeatherTech.'],
+        ['8ACF3XLE+81CF15', 'interior', 'Porta celular WeatherTech CupFone XL con extensión', 70, 'Porta celular que se fija en el portavasos, con brazo de extensión.'],
+        ['81BS1BX', 'interior', 'BumpStep WeatherTech (protector de parachoques trasero)', 60, 'Protector de parachoques que se instala en el enganche (hitch) y absorbe golpes al estacionar.'],
+        ['81BS1XL', 'interior', 'BumpStep XL WeatherTech (protector de parachoques trasero)', 120, 'Versión XL del protector de parachoques para enganche (hitch).'],
+        ['8DP22Ch', 'interior', 'Protector de puertas traseras para perros WeatherTech 22" negro (par)', 70, 'Protege el panel interior de las puertas traseras de las uñas de las mascotas.'],
+        ['8DP26Ch', 'interior', 'Protector de puertas traseras para perros WeatherTech 26" negro (par)', 70, 'Protege el panel interior de las puertas traseras de las uñas de las mascotas.'],
+        ['81CSPO1BK', 'interior', 'Protector de asiento para silla de bebé WeatherTech negro', 60, 'Protege el tapizado debajo de la silla de bebé.'],
+        ['81CSPOICO', 'interior', 'Protector de asiento para silla de bebé WeatherTech cocoa', 60, 'Protege el tapizado debajo de la silla de bebé.'],
+        ['81CSPOITN', 'interior', 'Protector de asiento para silla de bebé WeatherTech beige', 60, 'Protege el tapizado debajo de la silla de bebé.'],
+        ['81CSPOIGY', 'interior', 'Protector de asiento para silla de bebé WeatherTech gris', 60, 'Protege el tapizado debajo de la silla de bebé.'],
+      ].forEach(([cod, sub, nombre, precio, desc]) => {
+        const id = idWT(cod);
+        if (porId(id)) return;
+        prods.push({ id, nombre, categoria: 'accesorio', subcategoria: sub, marca: 'WeatherTech', altura: '', precio, foto: '',
+          descripcion: `${desc} SKU ${cod}.`, compatibles: [] });
+      });
+
+      cfg.migradoWeatherTech1 = true;
+      guardarCatalogoLocal();
+    }
+
     // Normalizador permanente de variantes/duplicados de modelos:
     // - "Autana" -> "Land Cruiser S80" (veh-toyota-autana)
     // - "Merú / Prado" / "Prado / Meru" / "Land Cruiser S90" -> "Land Cruiser Serie 90" (veh-toyota-meru-prado)
