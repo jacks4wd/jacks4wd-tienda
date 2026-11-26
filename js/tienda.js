@@ -1671,8 +1671,13 @@
       if (!s || !p) return;
       b.disabled = true; b.textContent = 'Aprobando…';
       try {
-        // Se copia la imagen al producto; al guardar se sube a Storage como cualquier otra foto
-        const blob = await (await fetch(s.foto, { cache: 'no-store' })).blob();
+        // Se copia la imagen al producto; al guardar se sube a Storage como cualquier otra foto.
+        // Primero desde la propia tienda; si está abierta desde un archivo de la computadora
+        // (file://, donde el navegador bloquea la lectura), desde la dirección pública.
+        const bajar = async (url) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); };
+        let blob;
+        try { blob = await bajar(s.foto); }
+        catch { blob = await bajar(new URL(s.foto, CFG?.urlPublica || 'https://app.jacks4wd.com/jacks4wd-tienda/').href); }
         if (!blob.type.startsWith('image/')) throw new Error('El archivo sugerido no es una imagen.');
         p.foto = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('No se pudo leer la imagen.')); fr.readAsDataURL(blob); });
         estadosRevision()[id] = { estado: 'aprobada', foto: s.foto, fecha: hoy };
