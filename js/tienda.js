@@ -2939,6 +2939,159 @@
       guardarCatalogoLocal();
     }
 
+    // Migración (una vez, 26-11-2026): mesetas Camburg y tapas de cajón (BAKFlip, Roll-N-Lock,
+    // Rugged Liner) de la lista "Precios Mayor 2026 V2". Precio = costo x 1,22 redondeado a 5.
+    // Se crean las generaciones de Tacoma y Ranger, que esas listas distinguen por años.
+    if (!cfg.migradoCamburgBedcovers1) {
+      const prods = (catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : []);
+      const porId = (id) => prods.find((p) => p.id === id);
+      const vehDe = (marca, modelo) => vehiculos().find((v) => v.marca === marca && v.modelo === modelo);
+      const anios = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+      // 1) Generaciones nuevas (solo si el vehículo aún no tiene)
+      const ponerGens = (marca, modelo, gens) => {
+        const v = vehDe(marca, modelo);
+        if (v && !(v.generaciones || []).length) v.generaciones = gens;
+      };
+      ponerGens('Toyota', 'Tacoma', [
+        { nombre: 'Tacoma 2005–2015', anios: anios(2005, 2015) },
+        { nombre: 'Tacoma 2016–2023', anios: anios(2016, 2023) },
+        { nombre: 'Tacoma 2024 en adelante', anios: anios(2024, 2026) },
+      ]);
+      ponerGens('Ford', 'Ranger', [
+        { nombre: 'Ranger PX3 2012–2022', anios: anios(2012, 2022) },
+        { nombre: 'Ranger MY22 2023 en adelante', anios: anios(2023, 2026) },
+      ]);
+      const gen = (marca, modelo, pista) => (vehDe(marca, modelo)?.generaciones || []).find((g) => String(g.nombre).toLowerCase().includes(pista))?.nombre || '';
+      // Kits ya cargados cuyo nombre indica la generación de Tacoma / Ranger
+      [
+        ['Toyota', 'Tacoma', '2016', ['ome-nitrocharger-tacoma-16-on', 'ome-bp51-tacoma-16']],
+        ['Toyota', 'Tacoma', '2024', ['ome-nitrocharger-tacoma-2024-3', 'ome-bp51-tacoma-2024', 'ome-mt64-tacoma-3-2024']],
+        ['Ford', 'Ranger', 'px3', ['ome-nitrocharger-ford-ranger-2011-2023', 'ome-bp51-ranger-px3']],
+        ['Ford', 'Ranger', 'my22', ['ome-nitrocharger-ford-ranger-my22-2024', 'ome-bp51-ranger-my22', 'ome-mt64-ranger-my22-2023', 'pmwtzdwplcyptap']],
+      ].forEach(([marca, modelo, pista, ids]) => {
+        const g = gen(marca, modelo, pista);
+        if (!g) return;
+        ids.forEach((id) => (porId(id)?.compatibles || []).forEach((c) => {
+          if (c.marca === marca && c.modelo === modelo) { c.genNombre = g; c.anios = []; }
+        }));
+      });
+
+      // 2) Marcas y subcategoría de tapas de cajón
+      catalogo.marcas = Array.isArray(catalogo.marcas) ? catalogo.marcas : [];
+      [
+        { id: 'camburg', nombre: 'Camburg', descripcion: 'Brazos de control (mesetas) de competición off-road, fabricados en EE. UU.' },
+        { id: 'bakflip', nombre: 'BAKFlip', descripcion: 'Tapas duras plegables de aluminio para cajón de pickup.' },
+        { id: 'roll-n-lock', nombre: 'Roll-N-Lock', descripcion: 'Tapas enrollables de aluminio con cerradura, manuales y eléctricas.' },
+        { id: 'rugged-liner', nombre: 'Rugged Liner', descripcion: 'Protectores y lonas para cajón de pickup.' },
+      ].forEach((m) => { if (!catalogo.marcas.some((x) => x.nombre.toLowerCase() === m.nombre.toLowerCase())) catalogo.marcas.push({ ...m, logo: '' }); });
+      const catAcc = (cfg.categorias || []).find((c) => c.id === 'accesorio');
+      if (catAcc) {
+        catAcc.subcategorias = Array.isArray(catAcc.subcategorias) ? catAcc.subcategorias : [];
+        if (!catAcc.subcategorias.some((s) => s.id === 'bedcovers')) catAcc.subcategorias.push({ id: 'bedcovers', nombre: 'Tapas de cajón (Bedcovers)' });
+      }
+
+      // 3) Compatibilidades (nombres exactos de los vehículos de la tienda)
+      const T = (modelo, pista) => { const c = { marca: 'Toyota', modelo, anios: [] }; const g = pista ? gen('Toyota', modelo, pista) : ''; if (g) c.genNombre = g; return c; };
+      const V = {
+        tacA: T('Tacoma', '2005'), tacB: T('Tacoma', '2016'), tacC: T('Tacoma', '2024'),
+        r4ta: T('4Runner', '4ta'), r5ta: T('4Runner', '5ta'), r6ta: T('4Runner', '6ta'),
+        fj: T('FJ Cruiser'), fortuner: T('Fortuner'),
+        kavak: T('Hilux', 'kavak'), revo: T('Hilux', 'revo'), gr: T('Hilux', 'gr'),
+        tunA: T('Tundra', '2007'), tunB: T('Tundra', '2022'),
+        lc200: T('Roraima Serie 200'), lc250: T('Land Cruiser LC250'), lc300: T('Land Cruiser 300'), meru: T('Land Cruiser Serie 90'),
+        f250: { marca: 'Ford', modelo: 'F-250 / F-350', anios: [] },
+        l200: { marca: 'Mitsubishi', modelo: 'L200', genNombre: gen('Mitsubishi', 'L200', '2015') || undefined, anios: [] },
+        px3: { marca: 'Ford', modelo: 'Ranger', genNombre: gen('Ford', 'Ranger', 'px3') || undefined, anios: [] },
+        my22: { marca: 'Ford', modelo: 'Ranger', genNombre: gen('Ford', 'Ranger', 'my22') || undefined, anios: [] },
+      };
+      Object.values(V).forEach((c) => { if (!c.genNombre) delete c.genNombre; });
+      const toyota2005 = [V.fortuner, V.kavak, V.revo, V.r4ta, V.r5ta, V.fj, V.tacA, V.tacB];
+      const kinetic0523 = [V.tacA, V.tacB, V.r4ta, V.r5ta, V.fortuner, V.revo, V.fj];
+
+      // 4) Mesetas Camburg (Partes de suspensión → Mesetas)
+      const MES = 'Mesetas superiores (brazos de control) Camburg';
+      const camburg = [
+        ['CAM-310041', `${MES} Uniball 1.50" Tundra 2007-2021 (par)`, 1335, [V.tunA], 'Uniball de 1,50". Corrigen caída y avance tras levantar la suspensión.'],
+        ['CAM-310036', `${MES} Uniball 1.25" Fortuner / Hilux / 4Runner / FJ / Tacoma 2005-2019 (par)`, 1335, toyota2005, 'Uniball de 1,25" (Performance). Corrigen caída y avance tras levantar la suspensión.'],
+        ['CAM-310130', `${MES} Uniball 1.25" con tapas guardapolvo Fortuner / Hilux / 4Runner / FJ / Tacoma 2005-2019 (par)`, 1350, toyota2005, 'Versión nueva del 310036 con tapas guardapolvo a presión en la rótula Uniball de 1,25".'],
+        ['CAM-310043', `${MES} Uniball 1.25" Hilux y Fortuner 2005-2019 (par)`, 1350, [V.kavak, V.revo, V.fortuner], 'Uniball de 1,25". Corrigen caída y avance tras levantar la suspensión.'],
+        ['CAM-310042', `${MES} Uniball 1.25" Roraima LC200 2007-2021 (par)`, 1455, [V.lc200], 'Uniball de 1,25". Corrigen caída y avance tras levantar la suspensión.'],
+        ['CAM-310184-GRY', `${MES} KINETIC Gris Tacoma / 4Runner / Fortuner / Revo / FJ 2005-2023 (par)`, 2075, kinetic0523, 'Línea KINETIC, acabado gris.'],
+        ['CAM-310184-BLU', `${MES} KINETIC Azul Tacoma / 4Runner / Fortuner / Revo / FJ 2005-2023 (par)`, 2180, kinetic0523, 'Línea KINETIC, acabado azul.'],
+        ['CAM-310184-GLD', `${MES} KINETIC Amarilla Tacoma / 4Runner / Fortuner / Revo / FJ 2005-2023 (par)`, 2180, kinetic0523, 'Línea KINETIC, acabado amarillo.'],
+        ['CAM-310187', `${MES} KINETIC Tundra 2007-2021 (par)`, 2180, [V.tunA], 'Línea KINETIC.'],
+        ['CAM-310189', `${MES} KINETIC Tundra 2022+ (par)`, 2180, [V.tunB], 'Línea KINETIC.'],
+        ['CAM-310193-GRY', `${MES} KINETIC Gris Roraima LC200 2007-2021 (par)`, 2180, [V.lc200], 'Línea KINETIC, acabado gris.'],
+        ['CAM-310194-GRY', `${MES} KINETIC Gris LC300 / LC250 / Tacoma 2024+ (par)`, 2385, [V.lc300, V.lc250, V.tacC], 'Línea KINETIC, acabado gris.'],
+        ['CAM-310194-BLU', `${MES} KINETIC Azul LC300 / LC250 / Tacoma 2024+ (par)`, 2490, [V.lc300, V.lc250, V.tacC], 'Línea KINETIC, acabado azul.'],
+        ['CAM-310194-GLD', `${MES} KINETIC Amarilla LC300 / LC250 / Tacoma 2024+ (par)`, 2490, [V.lc300, V.lc250, V.tacC], 'Línea KINETIC, acabado amarillo.'],
+        ['CAM-310196', `${MES} Uniball 1.25" LC300 / LC250 / 4Runner 2025+ / Tacoma 2024+ (par)`, 1555, [V.lc300, V.lc250, V.r6ta, V.tacC], 'Uniball de 1,25".'],
+        ['CAM-310005', `${MES} Uniball 1.00" Merú / Prado (par)`, 1245, [V.meru], 'Uniball de 1,00".'],
+        ['CAM-310167', 'Mesetas inferiores (brazos de control) Camburg 4Runner 2010-2024 / FJ 2010-2016 (par)', 2855, [V.r5ta, V.fj], 'Únicamente para vehículos con coilovers.'],
+      ];
+      camburg.forEach(([sku, nombre, precio, compat, extra]) => {
+        const id = 'camburg-' + sku.toLowerCase();
+        if (porId(id)) return;
+        prods.push({ id, nombre, categoria: 'partes', subcategoria: 'mesetas', marca: 'Camburg', altura: '', precio, foto: '',
+          descripcion: `${extra} SKU ${sku}.`, compatibles: compat.map((c) => ({ ...c })) });
+      });
+
+      // 5) Tapas de cajón (Accesorios → Tapas de cajón)
+      const TIPO = {
+        mx4: ['BAKFlip', 'Tapa dura plegable BAKFlip MX4', 'Tapa dura plegable de aluminio con acabado texturizado mate; se pliega hacia la cabina.'],
+        g2: ['BAKFlip', 'Tapa dura plegable BAKFlip G2', 'Tapa dura plegable de aluminio; se pliega hacia la cabina.'],
+        a: ['Roll-N-Lock', 'Tapa enrollable Roll-N-Lock A-Series (manual)', 'Tapa enrollable de aluminio con cerradura, de apertura manual.'],
+        e: ['Roll-N-Lock', 'Tapa enrollable eléctrica Roll-N-Lock E-Series', 'Tapa enrollable de aluminio con motor eléctrico y control remoto.'],
+        m: ['Roll-N-Lock', 'Tapa enrollable Roll-N-Lock M-Series', 'Tapa enrollable de vinilo y aluminio con cerradura.'],
+        lona: ['Rugged Liner', 'Lona plegable Rugged Liner con luz interna', 'Lona suave plegable en 3 piezas, con luz interna y batería.'],
+      };
+      const bed = [
+        ['448426', 'mx4', 'Tacoma 2016-2023 (5 pies)', 1450, [V.tacB]],
+        ['BT530A', 'a', 'Tacoma 2016-2023', 2190, [V.tacB]],
+        ['RC530E', 'e', 'Tacoma 2016-2023', 3000, [V.tacB]],
+        ['448446', 'mx4', 'Tacoma 2024+ (5 pies)', 1450, [V.tacC]],
+        ['LG532M', 'm', 'Tacoma 2024+ (5 pies)', 1995, [V.tacC]],
+        ['BT532A', 'a', 'Tacoma 2024+ (5 pies)', 2400, [V.tacC]],
+        ['448409T', 'mx4', 'Tundra 2007-2021 Crew Max y TRD PRO (5\'5")', 1490, [V.tunA]],
+        ['448410T', 'mx4', 'Tundra 2007-2021 Double Cab (6\'5")', 1580, [V.tunA]],
+        ['BT570A', 'a', 'Tundra 2007-2021 Crew Max y TRD PRO (5\'5")', 2360, [V.tunA]],
+        ['BT571A', 'a', 'Tundra 2007-2021 Double Cab (6\'5")', 2360, [V.tunA]],
+        ['RC570E', 'e', 'Tundra 2007-2021 Crew Max y TRD PRO (5\'5")', 3100, [V.tunA]],
+        ['RC571E', 'e', 'Tundra 2007-2021 Double Cab (6\'5")', 3100, [V.tunA]],
+        ['448440', 'mx4', 'Tundra 2022+ Crew Max y TRD PRO (5\'5")', 1600, [V.tunB]],
+        ['448441', 'mx4', 'Tundra 2022+ Double Cab (6\'5")', 1620, [V.tunB]],
+        ['BT575A', 'a', 'Tundra 2022+ Crew Max y TRD PRO (5\'7")', 2425, [V.tunB]],
+        ['BT576A', 'a', 'Tundra 2022+ Double Cab (6\'7")', 2425, [V.tunB]],
+        ['RC575E', 'e', 'Tundra 2022+ Crew Max y TRD PRO (5\'7")', 3100, [V.tunB]],
+        ['RC576E', 'e', 'Tundra 2022+ Double Cab (6\'7")', 3100, [V.tunB]],
+        ['226414', 'g2', 'Hilux Kavak', 1275, [V.kavak]],
+        ['448434', 'mx4', 'Hilux Revo sin ganchos', 1600, [V.revo, V.gr]],
+        ['LG511M', 'm', 'Hilux Kavak 2005-2020 doble cabina sin ganchos', 2000, [V.kavak]],
+        ['LG517M', 'm', 'Hilux Revo 2015-2024 doble cabina con ganchos', 2000, [V.revo, V.gr]],
+        ['LG518M', 'm', 'Hilux Revo 2015-2024 doble cabina sin ganchos', 2000, [V.revo, V.gr]],
+        ['RC518E', 'e', 'Hilux Revo 2015-2024 doble cabina sin ganchos', 3100, [V.revo, V.gr]],
+        ['FCTHV506', 'lona', 'Hilux Kavak (5 pies)', 380, [V.kavak]],
+        ['448310', 'mx4', 'Ford F-250 (6\'9")', 1550, [V.f250]],
+        ['LG614M', 'm', 'Mitsubishi L200 2019-2024 doble cabina', 2000, [V.l200]],
+        ['448318', 'mx4', 'Ford Ranger PX3 2012-2023 (5 pies)', 1450, [V.px3]],
+        ['LG122M', 'm', 'Ford Ranger PX3 2012-2023 doble cabina', 2000, [V.px3]],
+        ['448342', 'mx4', 'Ford Ranger MY22 2024+ (5 pies)', 1500, [V.my22]],
+        ['LG124M', 'm', 'Ford Ranger MY22 2024+ doble cabina', 2050, [V.my22]],
+        ['BT124A', 'a', 'Ford Ranger MY22 2024+ doble cabina', 2400, [V.my22]],
+      ];
+      bed.forEach(([sku, tipo, veh, precio, compat]) => {
+        const [marca, nombre, desc] = TIPO[tipo];
+        const id = `${marca.toLowerCase().replace(/[^a-z0-9]+/g, '')}-${sku.toLowerCase()}`;
+        if (porId(id)) return;
+        prods.push({ id, nombre: `${nombre} ${veh}`, categoria: 'accesorio', subcategoria: 'bedcovers', marca, altura: '', precio, foto: '',
+          descripcion: `${desc} SKU ${sku}.`, compatibles: compat.map((c) => ({ ...c })) });
+      });
+
+      cfg.migradoCamburgBedcovers1 = true;
+      guardarCatalogoLocal();
+    }
+
     // Normalizador permanente de variantes/duplicados de modelos:
     // - "Autana" -> "Land Cruiser S80" (veh-toyota-autana)
     // - "Merú / Prado" / "Prado / Meru" / "Land Cruiser S90" -> "Land Cruiser Serie 90" (veh-toyota-meru-prado)
