@@ -1706,7 +1706,7 @@
         const bajar = async (url) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); };
         let blob;
         try { blob = await bajar(s.foto); }
-        catch { blob = await bajar(new URL(s.foto, CFG?.urlPublica || 'https://app.jacks4wd.com/jacks4wd-tienda/').href); }
+        catch { blob = await bajar(new URL(s.foto, CFG?.urlPublica || 'https://jacks4wd.com/').href); }
         if (!blob.type.startsWith('image/')) throw new Error('El archivo sugerido no es una imagen.');
         p.foto = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('No se pudo leer la imagen.')); fr.readAsDataURL(blob); });
         estadosRevision()[id] = { estado: 'aprobada', foto: s.foto, fecha: hoy };
@@ -1935,7 +1935,7 @@
           // Abierta desde internet: su propia dirección. Desde un archivo (file://) o pruebas locales:
           // la dirección pública configurada, nunca una ruta de la computadora.
           const enLinea = /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
-          const base = enLinea ? location.origin + location.pathname : (CFG?.urlPublica || 'https://app.jacks4wd.com/jacks4wd-tienda/');
+          const base = enLinea ? location.origin + location.pathname : (CFG?.urlPublica || 'https://jacks4wd.com/');
           const link = `${base}?invitado=${clave}`;
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(link).then(() => toast('Link de invitado copiado')).catch(() => prompt('Copia este link de invitado:', link));

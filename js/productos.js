@@ -13,7 +13,7 @@ const TIENDA_CONFIG = {
   claveInvitado: 'jacks4wd',
   // Dirección pública de la tienda: base de los enlaces que se copian (invitado, cliente).
   // Al lanzar con dominio propio, cámbiala por 'https://tienda.jacks4wd.com/'.
-  urlPublica: 'https://app.jacks4wd.com/jacks4wd-tienda/',
+  urlPublica: 'https://jacks4wd.com/',
 };
 
 const CONFIG_INICIAL = {
