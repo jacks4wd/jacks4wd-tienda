@@ -1583,7 +1583,21 @@
       headers: { apikey: NUBE.clave, Authorization: 'Bearer ' + d.access_token, 'Content-Type': 'application/json' },
     }).then((x) => x.json());
     if (!perfil.length || perfil[0].rol !== 'admin') throw new Error('Este usuario no es administrador.');
-    return { access_token: d.access_token, email: d.user.email };
+    return { access_token: d.access_token, refresh_token: d.refresh_token, expira: Date.now() + (Number(d.expires_in) || 3600) * 1000, email: d.user.email };
+  }
+  // La sesión de Supabase dura ~1 hora: antes de guardar se renueva si está por vencer,
+  // para que un administrador que deja la página abierta no vea guardados que fallan.
+  async function asegurarSesion() {
+    if (!sesionAdmin) throw new Error('Inicia sesión primero.');
+    if (sesionAdmin.expira && sesionAdmin.expira - Date.now() > 120000) return;
+    if (!sesionAdmin.refresh_token) return;
+    const r = await fetch(`${NUBE.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST', headers: { apikey: NUBE.clave, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: sesionAdmin.refresh_token }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.access_token) throw new Error('La sesión venció. Sal y vuelve a entrar en Administrar para guardar.');
+    Object.assign(sesionAdmin, { access_token: d.access_token, refresh_token: d.refresh_token || sesionAdmin.refresh_token, expira: Date.now() + (Number(d.expires_in) || 3600) * 1000 });
   }
 
   // ===================== FOTOS EN SUPABASE STORAGE =====================
@@ -1617,7 +1631,9 @@
     });
     if (!r.ok) {
       const t = await r.text().catch(() => '');
-      if (/bucket not found|not found|row-level security|unauthorized/i.test(t) || r.status === 404) storageNoDisponible = true;
+      // Sesión vencida ≠ almacenamiento no disponible (antes se confundían y las fotos se quedaban incrustadas)
+      if (/jwt|expired|token/i.test(t)) throw new Error('La sesión venció. Sal y vuelve a entrar en Administrar para guardar.');
+      if (/bucket not found|row-level security/i.test(t) || r.status === 404) storageNoDisponible = true;
       throw new Error(t || `Error ${r.status} al subir la foto`);
     }
     return urlFotoNube(ruta);
@@ -1634,20 +1650,32 @@
     (catalogo.marcas || []).forEach((m) => anotar(m, 'logo', 'marcas'));
     anotar(catalogo.config, 'heroFoto', 'portada');
     if (!tareas.length || storageNoDisponible) return { subidas: 0, pendientes: tareas.length };
-    const hechas = new Map();
+    // La misma foto (mismo contenido) se sube una sola vez aunque aparezca en varios productos
+    const enCurso = new Map();
+    const subir = (dato, carpeta) => {
+      if (!enCurso.has(dato)) enCurso.set(dato, subirFotoNube(dato, carpeta));
+      return enCurso.get(dato);
+    };
     let subidas = 0;
-    for (const t of tareas) {
-      const dato = t.obj[t.clave];
-      try {
-        const url = hechas.get(dato) || await subirFotoNube(dato, t.carpeta);
-        hechas.set(dato, url);
-        t.obj[t.clave] = url;
-        subidas++;
-        alAvanzar(subidas, tareas.length);
-      } catch (e) {
-        if (storageNoDisponible) break; // falta el SQL del bucket: se guarda como antes
+    let errorSesion = null;
+    // Hasta 4 fotos a la vez: más rápido sin saturar la conexión
+    let i = 0;
+    const trabajador = async () => {
+      while (i < tareas.length && !storageNoDisponible && !errorSesion) {
+        const t = tareas[i++];
+        const dato = t.obj[t.clave];
+        try {
+          const url = await subir(dato, t.carpeta);
+          if (t.obj[t.clave] === dato) t.obj[t.clave] = url; // si se cambió mientras subía, no se pisa
+          subidas++;
+          alAvanzar(subidas, tareas.length);
+        } catch (e) {
+          if (/sesión venció/i.test(e.message)) errorSesion = e;
+        }
       }
-    }
+    };
+    await Promise.all([trabajador(), trabajador(), trabajador(), trabajador()]);
+    if (errorSesion) throw errorSesion;
     return { subidas, pendientes: tareas.length - subidas };
   }
 
@@ -1722,14 +1750,30 @@
     }));
   }
 
-  async function guardarCatalogoNube() {
+  // Los guardados van en fila: si se pide guardar mientras otro está en curso (p. ej. aprobar
+  // varias fotos seguidas), se hace UN guardado más al terminar, que incluye todos los cambios.
+  // Antes se lanzaban en paralelo, se pisaban y el contador de fotos no terminaba nunca.
+  let colaGuardado = Promise.resolve();
+  let guardadoEnEspera = null;
+  function guardarCatalogoNube() {
+    if (guardadoEnEspera) return guardadoEnEspera;
+    const p = colaGuardado.catch(() => {}).then(() => { guardadoEnEspera = null; return guardarCatalogoNubeAhora(); });
+    guardadoEnEspera = p;
+    colaGuardado = p;
+    return p;
+  }
+  async function guardarCatalogoNubeAhora() {
     if (!sesionAdmin) throw new Error('Inicia sesión primero.');
     if (!catalogoDeNube) throw new Error('No se pudo leer el catálogo de la nube al abrir la tienda. Recarga la página con conexión antes de guardar, para no sobrescribir los productos de la nube.');
+    await asegurarSesion();
+    storageNoDisponible = false; // se vuelve a comprobar en cada guardado
     const estado = () => document.getElementById('admin-estado');
-    await moverFotosANube((n, total) => { const s = estado(); if (s) s.textContent = `⏳ Subiendo fotos al almacenamiento: ${n} de ${total}…`; });
+    const { pendientes } = await moverFotosANube((n, total) => { const s = estado(); if (s) s.textContent = `⏳ Subiendo fotos al almacenamiento: ${n} de ${total}…`; });
+    const s0 = estado();
     if (storageNoDisponible) {
-      const s = estado();
-      if (s) s.textContent = 'ℹ️ Las fotos se guardan dentro del catálogo porque falta activar el almacenamiento de fotos (supabase/tienda-fotos.sql).';
+      if (s0) s0.textContent = 'ℹ️ Las fotos se guardan dentro del catálogo porque falta activar el almacenamiento de fotos (supabase/tienda-fotos.sql).';
+    } else if (s0) {
+      s0.textContent = pendientes ? `⏳ Guardando el catálogo (${pendientes} foto(s) no se pudieron subir; se reintentará en el próximo guardado)…` : '⏳ Guardando el catálogo…';
     }
     const r = await fetch(`${NUBE.url}/rest/v1/tienda`, {
       method: 'POST',
