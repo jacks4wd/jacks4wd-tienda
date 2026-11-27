@@ -110,7 +110,13 @@
   }
 
   const marcas = () => catalogo.marcas || [];
-  const productos = () => catalogo.productos || [];
+  // Productos "en revisión" (revision: true) solo existen para el panel #/admin: los clientes no los
+  // ven en catálogo, búsqueda, ficha ni pop-ups hasta que el dueño los aprueba.
+  const todosLosProductos = () => catalogo.productos || [];
+  const enPanelAdmin = () => String(location.hash || '').startsWith('#/admin');
+  const productos = () => (enPanelAdmin() ? todosLosProductos() : todosLosProductos().filter((p) => !p.revision));
+  // Una categoría cuyos productos están todos en revisión no se muestra al público.
+  const categoriaPublica = (c) => enPanelAdmin() || !todosLosProductos().some((p) => p.categoria === c.id) || productos().some((p) => p.categoria === c.id);
   const vehiculos = () => catalogo.vehiculos || [];
   const config = () => catalogo.config || confInicial();
   const categorias = () => config().categorias || confInicial().categorias;
@@ -218,7 +224,7 @@
   // Barra de categorías (debajo de la barra principal), al estilo "All categories / Lift kits / ..." de Mudify
   function pintarCatBar() {
     const bar = $('#catbar'); if (!bar) return;
-    const cats = categorias();
+    const cats = categorias().filter(categoriaPublica);
     bar.innerHTML = `
       <div class="nav-drop drop-todas">
         <button type="button" class="nav-drop-btn">Todas las categorías <span class="flecha">▾</span></button>
@@ -493,6 +499,17 @@
     const cat = categorias().find((c) => c.id === p.categoria);
     return (cat?.subcategorias || []).find((s) => s.id === p.subcategoria)?.nombre || '';
   }
+  // Ofertas (kits completos): precioAntes es la suma de las piezas por separado; se muestra tachado
+  // y la foto lleva el sticker naranja "10% OFF".
+  const enOferta = (p) => Number(p?.precioAntes) > Number(p?.precio);
+  function stickerOferta(p) {
+    if (!enOferta(p)) return '';
+    const pct = Math.round((1 - Number(p.precio) / Number(p.precioAntes)) * 100);
+    return `<span class="sticker-oferta">${esc(p.oferta || pct + '% OFF')}</span>`;
+  }
+  function precioAntesHTML(p) {
+    return enOferta(p) ? `<s class="precio-antes" aria-label="Antes ${fmt(p.precioAntes)} USD">${fmt(p.precioAntes)}</s> ` : '';
+  }
   function tarjetaProducto(p) {
     const tieneOpciones = Boolean(p.opciones && Array.isArray(p.opciones.valores) && p.opciones.valores.length);
     const [pMin, pMax] = rangoPrecios(p);
@@ -500,6 +517,7 @@
       <div class="foto-wrap">
         <a class="foto" href="#/producto/${esc(p.id)}" aria-label="${esc(p.nombre)}">
           ${p.altura ? `<span class="card-badge">Elevación ${esc(p.altura)}</span>` : ''}
+          ${stickerOferta(p)}
           ${fotoHTML(p)}
         </a>
         ${tieneOpciones
@@ -509,7 +527,7 @@
       <a class="cuerpo" href="#/producto/${esc(p.id)}">
         <span class="nombre">${esc(p.nombre)}</span>
         <div class="card-pie">
-          <span class="precio">${pMin !== pMax ? '<small class="desde">Desde</small> ' : ''}${fmt(pMin)} <small class="moneda">USD</small></span>
+          <span class="precio">${precioAntesHTML(p)}${pMin !== pMax ? '<small class="desde">Desde</small> ' : ''}${fmt(pMin)} <small class="moneda">USD</small></span>
           <span class="card-flecha" aria-hidden="true">${SVG_ICONOS.arrowRight}</span>
         </div>
       </a>
@@ -890,7 +908,7 @@
   // ===================== CATÁLOGO (2 columnas estilo ARB USA) =====================
   function vistaCatalogo(categoria) {
     if (categoria === 'merch') { vistaMerch(); return; }
-    const cats = categorias();
+    const cats = categorias().filter(categoriaPublica);
     const catsAutomotriz = cats.filter((c) => c.id !== 'merch');
     const esTodo = categoria === 'all' || !cats.some((c) => c.id === categoria);
     const cat = esTodo ? null : cats.find((c) => c.id === categoria);
@@ -1268,7 +1286,7 @@
       <nav class="breadcrumb"><a href="#/">Inicio</a><span>›</span><a href="${p.categoria === 'merch' ? '#/catalogo/merch' : urlCatalogoConVeh(p.categoria, vehActivo)}">${esc(cat?.nombre || p.categoria)}</a><span>›</span><strong>${esc(p.nombre)}</strong></nav>
       <div class="detalle seccion">
         <div class="detalle-galeria">
-          <div class="foto" id="detalle-foto-principal">${fotoHTML(p, true)}</div>
+          <div class="foto" id="detalle-foto-principal">${stickerOferta(p)}${fotoHTML(p, true)}</div>
           ${fotosDe(p).length > 1 ? `
           <div class="detalle-miniaturas" role="group" aria-label="Fotos del producto">
             ${fotosDe(p).map((src, i) => `
@@ -1285,7 +1303,8 @@
             ${p.altura ? `<span class="spec-tag" id="spec-elevacion">Elevación: ${esc(rangoElevacion([p.opciones?.valores?.[0]]) || p.altura)}</span>` : ''}
             ${esCompatVeh ? `<span class="spec-tag spec-ok">Compatible: ${esc(vehActivo.marca + ' ' + vehActivo.modelo + (vehActivo.genNombre ? ' ' + vehActivo.genNombre : ''))}</span>` : ''}
           </div>` : ''}
-          <div class="precio" id="detalle-precio">${fmt(precioDe(p, p.opciones?.valores?.[0]))} <small class="moneda">USD</small></div>
+          <div class="precio" id="detalle-precio">${precioAntesHTML(p)}${fmt(precioDe(p, p.opciones?.valores?.[0]))} <small class="moneda">USD</small></div>
+          ${enOferta(p) ? `<p class="ahorro-oferta">Ahorras ${fmt(p.precioAntes - p.precio)} USD comprando el kit completo</p>` : ''}
           ${opciones}
           ${String(p.descripcion || '').trim() ? `<p class="desc">${esc(p.descripcion)}</p>` : ''}
           ${compat}
@@ -1295,7 +1314,7 @@
     $('#btn-add').onclick = () => agregarAlCarrito(p.id, $('#sel-opcion')?.value);
     const selOpc = $('#sel-opcion');
     if (selOpc) selOpc.onchange = () => {
-      $('#detalle-precio').innerHTML = `${fmt(precioDe(p, selOpc.value))} <small class="moneda">USD</small>`;
+      $('#detalle-precio').innerHTML = `${precioAntesHTML(p)}${fmt(precioDe(p, selOpc.value))} <small class="moneda">USD</small>`;
       const tag = $('#spec-elevacion');
       if (tag) tag.textContent = `Elevación: ${rangoElevacion([selOpc.value]) || p.altura}`;
     };
@@ -1871,6 +1890,7 @@
           <div class="admin-rapido-grupo">
             <span class="admin-rapido-label">Ir a</span>
             ${fotosEnRevision().length ? `<a href="#" class="admin-rapido-link admin-rapido-revision" data-ir="sec-revision">Fotos en revisión (${fotosEnRevision().length})</a>` : ''}
+            ${todosLosProductos().some((p) => p.revision) ? `<a href="#" class="admin-rapido-link admin-rapido-revision" data-ir="sec-productos" data-filtro-prod="prod-revision">Productos en revisión (${todosLosProductos().filter((p) => p.revision).length})</a>` : ''}
             <a href="#" class="admin-rapido-link" data-ir="sec-productos">Productos</a>
             <a href="#" class="admin-rapido-link" data-ir="sec-vehiculos">Vehículos</a>
             <a href="#" class="admin-rapido-link" data-ir="sec-marcas">Marcas</a>
@@ -1979,6 +1999,7 @@
               <option value="">Todos los productos</option>
               <option value="sin-foto" ${filtroProdAdmin.filtro === 'sin-foto' ? 'selected' : ''}>Solo sin foto</option>
               <option value="revision" ${filtroProdAdmin.filtro === 'revision' ? 'selected' : ''}>Con foto en revisión</option>
+              <option value="prod-revision" ${filtroProdAdmin.filtro === 'prod-revision' ? 'selected' : ''}>Productos en revisión (ocultos)</option>
               ${categorias().map((c) => `<option value="cat:${esc(c.id)}" ${filtroProdAdmin.filtro === 'cat:' + c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
             </select>
           </div>
@@ -2107,6 +2128,10 @@
       $$('[data-nuevo-cat]').forEach((b) => (b.onclick = () => editarProducto(null, { categoria: b.dataset.nuevoCat })));
       $$('[data-ir]').forEach((a) => (a.onclick = (e) => {
         e.preventDefault();
+        if (a.dataset.filtroProd && $('#admin-filtro-prod')) {
+          $('#admin-filtro-prod').value = a.dataset.filtroProd;
+          $('#admin-filtro-prod').dispatchEvent(new Event('change'));
+        }
         document.getElementById(a.dataset.ir)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }));
       $('#cat-nueva').onclick = () => {
@@ -2330,25 +2355,47 @@
       const filtrados = productos().filter((p) => {
         if (filtro === 'sin-foto' && p.foto) return false;
         if (filtro === 'revision' && !sugerenciaFoto(p.id)) return false;
+        if (filtro === 'prod-revision' && !p.revision) return false;
         if (filtro.startsWith('cat:') && p.categoria !== filtro.slice(4)) return false;
         if (!qTxt) return true;
         const compTxt = (p.compatibles || []).map((c) => `${c.marca} ${c.modelo} ${c.genNombre || ''}`).join(' ');
-        return `${p.nombre} ${p.marca || ''} ${p.altura || ''} ${compTxt}`.toLowerCase().includes(qTxt);
+        return `${p.nombre} ${p.marca || ''} ${p.altura || ''} ${p.codigoLista || ''} ${compTxt}`.toLowerCase().includes(qTxt);
       });
+      const enRevisionFiltrados = filtrados.filter((p) => p.revision);
 
-      $('#lista-productos').innerHTML = filtrados.map((p) => `
+      $('#lista-productos').innerHTML = (enRevisionFiltrados.length ? `
+        <div class="aviso-revision">
+          <span><strong>${enRevisionFiltrados.length}</strong> producto(s) de esta lista están <strong>en revisión</strong>: los clientes no los ven hasta que los apruebes. Revisa nombre, precio, vehículos y foto antes de aprobar.</span>
+          <button type="button" class="btn small" id="aprobar-todos-prod">Aprobar los ${enRevisionFiltrados.length}</button>
+        </div>` : '') + filtrados.map((p) => `
         <div class="card" style="padding:14px;display:flex;gap:12px;align-items:center">
           <label data-drop-prod="${esc(p.id)}" title="Clic o arrastra imagen aquí para cambiar foto sin abrir editor" style="width:60px;height:60px;flex:none;border-radius:8px;overflow:hidden;border:1.5px dashed var(--linea-fuerte);display:flex;align-items:center;justify-content:center;background:#ffffff;cursor:pointer">
             ${fotoHTML(p)}
             <input type="file" accept="image/*" data-prod-foto-rapida="${esc(p.id)}" hidden>
           </label>
           <div style="flex:1;min-width:0">
-            <div class="nombre">${esc(p.nombre)}${sugerenciaFoto(p.id) ? ' <span class="badge-revision">Foto en revisión</span>' : ''}</div>
-            <div class="hint">${esc(categorias().find((c) => c.id === p.categoria)?.nombre || p.categoria)} · ${esc(p.marca || '—')}${p.altura ? ' · Elev. ' + esc(p.altura) : ''} · ${fmt(p.precio)} · ${(p.compatibles || []).length ? p.compatibles.map((c) => esc(c.modelo + (c.genNombre ? ' (' + c.genNombre + ')' : ''))).join(', ') : 'universal'}</div>
+            <div class="nombre">${esc(p.nombre)}${p.revision ? ' <span class="badge-revision badge-prod-revision">Producto en revisión · oculto</span>' : ''}${sugerenciaFoto(p.id) ? ' <span class="badge-revision">Foto en revisión</span>' : ''}</div>
+            <div class="hint">${esc(categorias().find((c) => c.id === p.categoria)?.nombre || p.categoria)} · ${esc(p.marca || '—')}${p.altura ? ' · Elev. ' + esc(p.altura) : ''} · ${enOferta(p) ? `<s>${fmt(p.precioAntes)}</s> ` : ''}${fmt(p.precio)}${p.opciones?.valores?.length ? ' (' + p.opciones.valores.map((v) => esc(v) + ': ' + fmt(precioDe(p, v))).join(' · ') + ')' : ''} · ${(p.compatibles || []).length ? p.compatibles.map((c) => esc(c.modelo + (c.genNombre ? ' (' + c.genNombre + ')' : '') + (!c.genNombre && c.anios?.length ? ' ' + rangoAnios(c.anios) : ''))).join(', ') : 'universal'}${p.codigoLista ? ` · Lista: ${esc(p.codigoLista)}` : ''}</div>
           </div>
+          ${p.revision ? `<button class="btn small" data-aprobar-prod="${esc(p.id)}">Aprobar</button>` : ''}
           <button class="btn ghost" data-editar-prod="${esc(p.id)}">Editar</button>
         </div>`).join('') || '<p class="vacio">No hay productos que coincidan con el filtro.</p>';
       $$('#lista-productos [data-editar-prod]').forEach((b) => (b.onclick = () => editarProducto(b.dataset.editarProd)));
+      // Aprobar productos en revisión: pasan a verse en la tienda al pulsar "Guardar en la nube"
+      const aprobarProductos = (lista) => {
+        lista.forEach((p) => { delete p.revision; });
+        guardarCatalogoLocal();
+        pintarListaProductos();
+        toast(`${lista.length} producto(s) aprobado(s). Pulsa "Guardar en la nube" para publicarlos.`);
+      };
+      $$('#lista-productos [data-aprobar-prod]').forEach((b) => (b.onclick = () => {
+        const p = productoPorId(b.dataset.aprobarProd); if (p) aprobarProductos([p]);
+      }));
+      const btnTodos = $('#aprobar-todos-prod');
+      if (btnTodos) btnTodos.onclick = () => {
+        if (!confirm(`¿Aprobar ${enRevisionFiltrados.length} producto(s)? Quedarán visibles para los clientes al guardar en la nube.`)) return;
+        aprobarProductos(enRevisionFiltrados);
+      };
       const subirRapidoProd = async (pId, file) => {
         if (!file || !file.type.startsWith('image/')) return;
         const prod = productoPorId(pId); if (!prod) return;
@@ -3602,6 +3649,41 @@
     if (!cfg.migradoSinDescripciones1) {
       (catalogo.productos || []).forEach((p) => { p.descripcion = ''; });
       cfg.migradoSinDescripciones1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 27-11-2026): categoría "Tren delantero" y productos MOOG (piezas + kits).
+    // Entran con revision: true → ocultos al público hasta que el dueño los aprueba en Administrar.
+    if (!cfg.migradoMoog1 && Array.isArray(window.MOOG_PRODUCTOS)) {
+      if (!(cfg.categorias || []).some((c) => c.id === 'tren')) {
+        const idxPartes = cfg.categorias.findIndex((c) => c.id === 'partes');
+        cfg.categorias.splice(idxPartes >= 0 ? idxPartes + 1 : cfg.categorias.length, 0, {
+          id: 'tren', nombre: 'Tren delantero', shop: 'Front End', icono: '🔩',
+          texto: 'Mesetas, muñones, terminales, huesos y kits completos de tren delantero MOOG',
+          subcategorias: [
+            { id: 'kits-tren', nombre: 'Kits de tren delantero' },
+            { id: 'mesetas-sup', nombre: 'Mesetas superiores' },
+            { id: 'mesetas-inf', nombre: 'Mesetas inferiores' },
+            { id: 'munones', nombre: 'Muñones (rótulas)' },
+            { id: 'terminales-ext', nombre: 'Terminales externos' },
+            { id: 'terminales-int', nombre: 'Terminales internos' },
+            { id: 'huesos', nombre: 'Huesos (barras link)' },
+            { id: 'gomas', nombre: 'Gomas de barra estabilizadora' },
+            { id: 'bujes', nombre: 'Bujes' },
+            { id: 'rolineras', nombre: 'Rolineras y mozos' },
+            { id: 'direccion', nombre: 'Dirección y track bar' },
+            { id: 'tripoides', nombre: 'Tripoides' },
+            { id: 'trasero', nombre: 'Tren trasero' },
+            { id: 'otros', nombre: 'Otras piezas' },
+          ],
+        });
+      }
+      if (!(catalogo.marcas || []).some((m) => String(m.nombre).toLowerCase() === 'moog')) {
+        catalogo.marcas.push({ id: 'moog', nombre: 'MOOG', descripcion: 'Partes de tren delantero y dirección de calidad original.' });
+      }
+      const existentes = new Set((catalogo.productos || []).map((p) => p.id));
+      window.MOOG_PRODUCTOS.forEach((p) => { if (!existentes.has(p.id)) catalogo.productos.push(JSON.parse(JSON.stringify(p))); });
+      cfg.migradoMoog1 = true;
       guardarCatalogoLocal();
     }
 
