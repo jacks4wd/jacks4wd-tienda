@@ -1381,7 +1381,11 @@
   // Dobinsons con Dobinsons…); si esa marca no tiene mesetas para el vehículo, todas las opciones
   // disponibles para ese carro. Devuelve una lista (vacía si el vehículo no usa mesetas cargadas).
   function buscarMesetasSugeridas({ prod = null, veh = null, prodsCarrito = [] } = {}) {
-    const mesetas = productos().filter((p) => p.categoria === 'partes' && p.subcategoria === 'mesetas' &&
+    // Cualquier meseta nueva entra sola: basta con subcategoría "Mesetas" (o el nombre lo dice),
+    // la marca y los vehículos compatibles cargados en Administrar.
+    const esMeseta = (p) => p.subcategoria === 'mesetas' ||
+      (p.categoria === 'partes' && /mesetas|brazos\s+de\s+control\s+superiores/i.test(p.nombre || ''));
+    const mesetas = productos().filter((p) => esMeseta(p) && p.categoria !== 'suspension' &&
       Array.isArray(p.compatibles) && p.compatibles.length && !/inferior/i.test(p.nombre || ''));
     if (!mesetas.length) return [];
     // El vehículo activo solo cuenta si el kit elegido (o alguno del carrito) es para ese vehículo;
@@ -1395,7 +1399,9 @@
         mc.marca === comp.marca && mc.modelo === comp.modelo &&
         (!mc.genNombre || !comp.genNombre || norm(mc.genNombre) === norm(comp.genNombre))))));
     }
-    const marcaNorm = (s) => String(s || '').trim().toLowerCase();
+    // Marca normalizada: ignora mayúsculas, espacios y signos, y entiende "OME" = "Old Man Emu".
+    const ALIAS_MARCA = { ome: 'oldmanemu', arb: 'oldmanemu', dobinson: 'dobinsons' };
+    const marcaNorm = (s) => { const n = String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); return ALIAS_MARCA[n] || n; };
     const marcasKit = new Set(kits.map((k) => marcaNorm(k.marca)).filter(Boolean));
     const mismaMarca = candidatas.filter((m) => marcasKit.has(marcaNorm(m.marca)));
     return mismaMarca.length ? mismaMarca : candidatas;
