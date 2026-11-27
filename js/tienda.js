@@ -430,6 +430,20 @@
     const v = p?.opciones?.precios?.[variante];
     return Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : Number(p?.precio) || 0;
   }
+  // Elevación en pulgadas que trae el texto de una opción: '3"' → [3,3], '2-3"' → [2,3], 'HD' → null
+  function pulgadasDe(texto) {
+    const m = String(texto || '').match(/(\d+(?:[.,]\d+)?)\s*(?:["”]?\s*[-–]\s*(\d+(?:[.,]\d+)?))?\s*["”]/);
+    if (!m) return null;
+    const a = parseFloat(m[1].replace(',', '.')); const b = m[2] ? parseFloat(m[2].replace(',', '.')) : a;
+    return [Math.min(a, b), Math.max(a, b)];
+  }
+  // Rango de elevación de una lista de opciones: '2"' o '2"–5"' (vacío si ninguna dice pulgadas)
+  function rangoElevacion(valores) {
+    const rs = (valores || []).map(pulgadasDe).filter(Boolean);
+    if (!rs.length) return '';
+    const min = Math.min(...rs.map((r) => r[0])); const max = Math.max(...rs.map((r) => r[1]));
+    return min === max ? `${min}"` : `${min}"–${max}"`;
+  }
   // Rango de precios de un producto con opciones de distinto precio: [mínimo, máximo]
   function rangoPrecios(p) {
     const vals = (p?.opciones?.valores || []).map((v) => precioDe(p, v));
@@ -1261,7 +1275,7 @@
           ${(p.marca || subNom || p.altura || esCompatVeh) ? `<div class="detalle-specs">
             ${p.marca ? `<span class="spec-tag">Marca: ${esc(p.marca)}</span>` : ''}
             ${subNom ? `<span class="spec-tag">Línea: ${esc(subNom)}</span>` : ''}
-            ${p.altura ? `<span class="spec-tag">Elevación: ${esc(p.altura)}</span>` : ''}
+            ${p.altura ? `<span class="spec-tag" id="spec-elevacion">Elevación: ${esc(rangoElevacion([p.opciones?.valores?.[0]]) || p.altura)}</span>` : ''}
             ${esCompatVeh ? `<span class="spec-tag spec-ok">Compatible: ${esc(vehActivo.marca + ' ' + vehActivo.modelo + (vehActivo.genNombre ? ' ' + vehActivo.genNombre : ''))}</span>` : ''}
           </div>` : ''}
           <div class="precio" id="detalle-precio">${fmt(precioDe(p, p.opciones?.valores?.[0]))} <small class="moneda">USD</small></div>
@@ -1273,7 +1287,11 @@
       </div>`;
     $('#btn-add').onclick = () => agregarAlCarrito(p.id, $('#sel-opcion')?.value);
     const selOpc = $('#sel-opcion');
-    if (selOpc) selOpc.onchange = () => { $('#detalle-precio').innerHTML = `${fmt(precioDe(p, selOpc.value))} <small class="moneda">USD</small>`; };
+    if (selOpc) selOpc.onchange = () => {
+      $('#detalle-precio').innerHTML = `${fmt(precioDe(p, selOpc.value))} <small class="moneda">USD</small>`;
+      const tag = $('#spec-elevacion');
+      if (tag) tag.textContent = `Elevación: ${rangoElevacion([selOpc.value]) || p.altura}`;
+    };
     // Galería: las miniaturas cambian la foto grande
     const listaFotos = fotosDe(p);
     $$('#vista .detalle-mini').forEach((b) => (b.onclick = () => {
@@ -3513,6 +3531,18 @@
       // Sin foto y sin foto pendiente de aprobar → fuera
       catalogo.productos = catalogo.productos.filter((p) => p.foto || (p.fotosExtra || []).length || sugerenciaFoto(p.id));
       cfg.migradoLimpieza1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 27-11-2026): al unir variantes en un producto con selector se perdió el
+    // campo "altura" (recuadro "Elevación" de la tarjeta). Se recupera como rango de las opciones.
+    if (!cfg.migradoElevacion1) {
+      (catalogo.productos || []).forEach((p) => {
+        if (p.categoria !== 'suspension' || String(p.altura || '').trim() || !p.opciones?.valores?.length) return;
+        const r = rangoElevacion(p.opciones.valores);
+        if (r) p.altura = r;
+      });
+      cfg.migradoElevacion1 = true;
       guardarCatalogoLocal();
     }
 
