@@ -459,8 +459,11 @@
   }
   function fotosEnRevision() { return FOTOS_SUG.map((s) => sugerenciaFoto(s.id)).filter(Boolean); }
 
-  function fotoHTML(p) {
-    if (p.foto) return `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy">`;
+  function fotoHTML(p, prioridad = false) {
+    // prioridad: la foto grande del producto se pide primero; las de las tarjetas, al acercarse
+    if (p.foto) return prioridad
+      ? `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" fetchpriority="high" decoding="async">`
+      : `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy" decoding="async">`;
     const cat = categorias().find((c) => c.id === p.categoria);
     return `<span class="sin-foto">${renderIconoCat(cat?.icono, p.categoria)}</span>`;
   }
@@ -654,7 +657,7 @@
       return `
       <article class="build-card">
         ${v.foto
-          ? `<img src="${esc(v.foto)}" alt="${esc(v.marca)} ${esc(v.modelo)}" loading="lazy">`
+          ? `<img src="${esc(v.foto)}" alt="${esc(v.marca)} ${esc(v.modelo)}" loading="lazy" decoding="async">`
           : `<span class="build-placeholder">${SVG_ICONOS.truck}</span>`}
         <div class="build-titulo-overlay">
           <span class="build-marca">${esc(v.marca)}</span>
@@ -1244,7 +1247,7 @@
       <nav class="breadcrumb"><a href="#/">Inicio</a><span>›</span><a href="${p.categoria === 'merch' ? '#/catalogo/merch' : urlCatalogoConVeh(p.categoria, vehActivo)}">${esc(cat?.nombre || p.categoria)}</a><span>›</span><strong>${esc(p.nombre)}</strong></nav>
       <div class="detalle seccion">
         <div class="detalle-galeria">
-          <div class="foto" id="detalle-foto-principal">${fotoHTML(p)}</div>
+          <div class="foto" id="detalle-foto-principal">${fotoHTML(p, true)}</div>
           ${fotosDe(p).length > 1 ? `
           <div class="detalle-miniaturas" role="group" aria-label="Fotos del producto">
             ${fotosDe(p).map((src, i) => `
@@ -2131,10 +2134,10 @@
         <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-              <div class="cat-icono-preview" data-cat-id="${esc(c.id)}" style="width:56px;height:56px;border:2px dashed var(--linea);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.6rem;background:var(--bg-suave)" title="Clic para cambiar icono/imagen">
+              <div class="cat-icono-preview" data-cat-id="${esc(c.id)}" style="width:56px;height:56px;border:2px dashed var(--linea);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:var(--fs-title);background:var(--bg-suave)" title="Clic para cambiar icono/imagen">
                 ${c.icono && (c.icono.startsWith('data:image') || c.icono.startsWith('http')) ? `<img src="${esc(c.icono)}" style="width:100%;height:100%;object-fit:cover">` : `<span>${c.icono || '📦'}</span>`}
               </div>
-              <span style="font-size:.7rem;color:var(--muted)">Icono</span>
+              <span style="font-size:var(--fs-2xs);color:var(--muted)">Icono</span>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px">
               <input data-cat="${esc(c.id)}" data-f="nombre" value="${esc(c.nombre)}" placeholder="Nombre" style="width:100%;padding:9px;border:1px solid var(--linea);border-radius:8px;font:inherit" title="Nombre de la categoría">

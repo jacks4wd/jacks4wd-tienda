@@ -17,7 +17,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/tienda.css?v=42e7410a03">
+<!-- Catálogo y fotos viven en Supabase: abrir la conexión mientras carga la página ahorra la espera de la primera foto -->
+<link rel="preconnect" href="https://zdbajipgoultgcrxizyn.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://zdbajipgoultgcrxizyn.supabase.co">
+<link rel="stylesheet" href="css/tienda.css?v=b96bd08b71">
 <script>
 /* Modo pre-lanzamiento: redirige visitantes públicos a Instagram sin parpadeo,
  * pero permite el acceso inmediato con enlace de invitado (?invitado=...), enlace
@@ -50,7 +53,6 @@
 </script>
 </head>
 <body>
-<div class="anuncio-bar">Especialistas en suspensiones 4x4 · Pedidos directos por WhatsApp · Instalación en nuestro taller</div>
 <header class="topbar">
   <button type="button" class="menu-btn" id="menu-btn" aria-label="Abrir menú" aria-expanded="false" aria-controls="catbar">
     <svg class="ico-abrir" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -116,6 +118,6 @@
 <script src="js/nube-config.js?v=1336348909"></script>
 <script src="js/productos.js?v=e610468f94"></script>
 <script src="js/fotos-sugeridas.js?v=f6af1020d8"></script>
-<script src="js/tienda.js?v=b95fb2e68a"></script>
+<script src="js/tienda.js?v=5773cd8136"></script>
 </body>
 </html>
