@@ -138,6 +138,18 @@ p { text-wrap: pretty; }
 }
 .nav > a:hover { background: rgba(255,255,255,.1); color: #ffffff; text-decoration: none; }
 .nav > a.active { background: var(--primary); color: #ffffff; }
+/* "Contáctanos": abre el WhatsApp del taller (mismo verde que los demás botones de WhatsApp) */
+.nav > a.nav-contacto {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  background: var(--wa);
+  color: #ffffff;
+}
+.nav > a.nav-contacto:hover { background: var(--wa-dark); color: #ffffff; }
+.menu-movil-extra a.menu-contacto { gap: 9px; color: #ffffff; background: var(--wa); margin-top: 8px; }
+.menu-movil-extra a.menu-contacto:hover { background: var(--wa-dark); }
 
 .brand {
   order: 2;

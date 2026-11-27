@@ -163,10 +163,16 @@
   // Listener de cierre de los menús (se reutiliza para poder removeEventListener)
   let _cerrarShop = null;
 
+  // WhatsApp del taller con un saludo listo para escribir
+  const SVG_WA = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+  function enlaceContactoWA() {
+    return `https://wa.me/${CFG?.whatsapp || ''}?text=${encodeURIComponent('Hola Jacks4WD, quisiera información.')}`;
+  }
   function pintarNav() {
     $('#nav').innerHTML = `
       <a href="#/" data-ruta="#/">Inicio</a>
-      <a href="#/faq" data-ruta="#/faq">FAQ</a>`;
+      <a href="#/faq" data-ruta="#/faq">FAQ</a>
+      <a class="nav-contacto" href="${esc(enlaceContactoWA())}" target="_blank" rel="noopener">${SVG_WA} Contáctanos</a>`;
     // Sin enlace "Administrar" a la vista: la tienda es pública. El panel se abre escribiendo
     // #/admin al final de la dirección (https://jacks4wd.com/#/admin).
     pintarCatBar();
@@ -231,6 +237,7 @@
       <div class="menu-movil-extra">
         <a href="#/">Inicio</a>
         <a href="#/faq">Preguntas frecuentes</a>
+        <a class="menu-contacto" href="${esc(enlaceContactoWA())}" target="_blank" rel="noopener">${SVG_WA} Contáctanos por WhatsApp</a>
       </div>`;
 
     // En el celular (menú desplegable) cada categoría se abre y cierra con un toque, como un acordeón
@@ -3543,6 +3550,40 @@
         if (r) p.altura = r;
       });
       cfg.migradoElevacion1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 27-11-2026): elevación de los kits que nunca la tuvieron (recuadro de la
+    // tarjeta). Valores del fabricante / distribuidores (OME-ARB, Dobinsons, Bilstein); los rangos
+    // dependen de la carga y los resortes elegidos. Solo se llena si el campo está vacío.
+    if (!cfg.migradoElevacion2) {
+      const E = {
+        // Bilstein / Dobinsons sueltos
+        pmwtzi6brfjd0im: '0"–2.5"', pmwu5q0qsl90cvj: '2"–3"',
+        // Old Man Emu Nitrocharger
+        'ome-nitrocharger-meru-prado': '2"', 'ome-nitrocharger-fortuner-2006-2020-nacional-medium': '2"',
+        'ome-nitrocharger-fortuner-dubai-2016-on-medium': '2"', 'ome-nitrocharger-4runner-fj-2006-2010': '2"',
+        'ome-nitrocharger-4runner-2010-2024-prado-s150-medium': '2"–2.5"', 'ome-nitrocharger-4runner-2025-con-mesetas-superiores': '2"–3"',
+        'ome-nitrocharger-lc300-soft-medium': '2"', 'ome-nitrocharger-hilux-nacional-kavak': '2"', 'ome-nitrocharger-hilux-revo-2016-on': '2"',
+        'ome-nitrocharger-tundra': '2"–2.5"', 'ome-nitrocharger-tacoma-16-on': '2"–2.5"', 'ome-nitrocharger-machito-78-y-79-con-bolsas-de-aire': '2"',
+        'ome-nitrocharger-cherokee-liberty-kj': '2"', 'ome-nitrocharger-cherokee-liberty-kk': '2"', 'ome-nitrocharger-grand-cherokee-wk2-10-16': '1.5"',
+        'ome-nitrocharger-grand-cherokee-wk-06-10': '2"', 'ome-nitrocharger-montero-sport-2004-2007': '2"', 'ome-nitrocharger-luv-dmax': '2"',
+        'ome-nitrocharger-ford-ranger-2011-2023': '2"', 'ome-nitrocharger-ford-ranger-my22-2024': '2"',
+        'ome-nitrocharger-jimny-2-puertas-2018': '1.5"', 'ome-nitrocharger-jimny-4-puertas-2023': '1.5"',
+        // Old Man Emu BP-51 y MT64
+        'ome-bp51-fortuner-nacional': '2"', 'ome-bp51-fortuner-dubai': '2"', 'ome-bp51-4runner-2010-2024-fj-2010-2016': '2"–2.5"',
+        'ome-bp51-4runner-2025-con-mesetas-superiores': '2"–3"', 'ome-bp51-prado-s150': '2"', 'ome-bp51-land-cruiser-s200-roraima': '2"',
+        'ome-bp51-lc300-soft': '2"', 'ome-bp51-land-cruiser-s300': '2"', 'ome-bp51-tundra-2022': '2"–3"',
+        'ome-mt64-4runner-2003-fj-2006-2009': '2"', 'ome-mt64-4runner-10-24-prado-150-fj-2010': '2"–2.5"', 'ome-mt64-roraima-lc200-2007-2021-hd': '2"',
+        // Dobinsons (Twintube, IMS, MRA y Quick Ride): 2"–3" según resortes; Jeep JL/JT 3"; WK2 2"
+        'dob-ims-grand-cherokee-wk2': '2"', 'dob-mra-jeep-gladiator-jt': '3"', 'dob-mra-jeep-rubicon-jl': '3"',
+      };
+      (catalogo.productos || []).forEach((p) => {
+        if (p.categoria !== 'suspension' || String(p.altura || '').trim()) return;
+        if (E[p.id]) p.altura = E[p.id];
+        else if (p.marca === 'Dobinsons') p.altura = '2"–3"';
+      });
+      cfg.migradoElevacion2 = true;
       guardarCatalogoLocal();
     }
 
