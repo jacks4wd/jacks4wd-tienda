@@ -1377,29 +1377,28 @@
       return p && (p.subcategoria === 'mesetas' || /mesetas\s+superiores|brazos\s+de\s+control\s+superiores/i.test(p.nombre || ''));
     });
   }
-  function buscarMesetaSugerida({ prod = null, veh = null, prodsCarrito = [] } = {}) {
-    const mesetas = productos().filter((p) => p.categoria === 'partes' && p.subcategoria === 'mesetas');
-    if (!mesetas.length) return null;
+  // Mesetas superiores sugeridas para el kit: primero las de la misma marca del kit (OME con OME,
+  // Dobinsons con Dobinsons…); si esa marca no tiene mesetas para el vehículo, todas las opciones
+  // disponibles para ese carro. Devuelve una lista (vacía si el vehículo no usa mesetas cargadas).
+  function buscarMesetasSugeridas({ prod = null, veh = null, prodsCarrito = [] } = {}) {
+    const mesetas = productos().filter((p) => p.categoria === 'partes' && p.subcategoria === 'mesetas' &&
+      Array.isArray(p.compatibles) && p.compatibles.length && !/inferior/i.test(p.nombre || ''));
+    if (!mesetas.length) return [];
     // El vehículo activo solo cuenta si el kit elegido (o alguno del carrito) es para ese vehículo;
-    // si no, se sugiere la meseta del vehículo del propio kit.
+    // si no, se sugieren las mesetas de los vehículos del propio kit.
     const kits = prod ? [prod] : prodsCarrito;
     if (veh && kits.length && !kits.some((k) => Array.isArray(k.compatibles) && k.compatibles.length && productoCompatibleConVeh(k, veh))) veh = null;
-    if (veh) {
-      const porVeh = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && productoCompatibleConVeh(m, veh));
-      if (porVeh) return porVeh;
+    let candidatas = veh ? mesetas.filter((m) => productoCompatibleConVeh(m, veh)) : [];
+    if (!candidatas.length) {
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      candidatas = mesetas.filter((m) => kits.some((k) => (k.compatibles || []).some((comp) => m.compatibles.some((mc) =>
+        mc.marca === comp.marca && mc.modelo === comp.modelo &&
+        (!mc.genNombre || !comp.genNombre || norm(mc.genNombre) === norm(comp.genNombre))))));
     }
-    const norm = (s) => String(s || '').trim().toLowerCase();
-    const fuentes = prod ? [prod] : prodsCarrito;
-    for (const f of fuentes) {
-      for (const comp of (f.compatibles || [])) {
-        const match = mesetas.find((m) => Array.isArray(m.compatibles) && m.compatibles.length && m.compatibles.some((mc) =>
-          mc.marca === comp.marca && mc.modelo === comp.modelo &&
-          (!mc.genNombre || !comp.genNombre || norm(mc.genNombre) === norm(comp.genNombre))));
-        if (match) return match;
-      }
-    }
-    // Sin meseta asociada al vehículo no hay sugerencia: muchos modelos no usan brazos de control superiores.
-    return null;
+    const marcaNorm = (s) => String(s || '').trim().toLowerCase();
+    const marcasKit = new Set(kits.map((k) => marcaNorm(k.marca)).filter(Boolean));
+    const mismaMarca = candidatas.filter((m) => marcasKit.has(marcaNorm(m.marca)));
+    return mismaMarca.length ? mismaMarca : candidatas;
   }
 
   function evaluarPopupMesetas(ctx = {}) {
@@ -1423,8 +1422,9 @@
 
     if (_mesetasOmitidas.has(claveOmitir)) return;
 
-    const meseta = buscarMesetaSugerida({ prod, veh, prodsCarrito: prodsSusp });
-    if (!meseta) return; // solo se sugiere en vehículos que tienen mesetas cargadas
+    const sugeridas = buscarMesetasSugeridas({ prod, veh, prodsCarrito: prodsSusp });
+    if (!sugeridas.length) return; // solo se sugiere en vehículos que tienen mesetas cargadas
+    const tieneOpciones = (m) => !!(m.opciones && Array.isArray(m.opciones.valores) && m.opciones.valores.length);
     const vehRef = veh
       ? etiquetaVehiculo(veh.marca, veh.modelo, veh.genNombre)
       : (prod?.compatibles?.length === 1 ? `${prod.compatibles[0].marca} ${prod.compatibles[0].modelo}` : '');
@@ -1453,16 +1453,25 @@
         <strong>Recomendación técnica Jacks4WD</strong>
       </div>
       <p class="mesetas-texto">Sugerimos combinar tu kit de suspensión${vehRef ? ` para <strong>${esc(vehRef)}</strong>` : ''} con <strong>Brazos de Control Superiores (Mesetas)</strong> para mantener una alineación exacta y proteger las rótulas.</p>
-      ${meseta ? `
-      <div class="mesetas-prod">
-        <div class="mesetas-prod-foto">${fotoHTML(meseta)}</div>
-        <div class="mesetas-prod-info">
-          <span class="mesetas-prod-nombre">${esc(meseta.nombre)}</span>
-          <span class="mesetas-prod-precio">${fmt(meseta.precio)} USD</span>
-        </div>
-      </div>` : ''}
+      ${sugeridas.length > 1 ? `<p class="mesetas-texto mesetas-opciones-titulo">${sugeridas.length} opciones para tu vehículo:</p>` : ''}
+      <div class="mesetas-lista">
+      ${sugeridas.map((m) => {
+        const [pMin, pMax] = rangoPrecios(m);
+        const precioTxt = pMin !== pMax ? `Desde ${fmt(pMin)} USD` : `${fmt(pMin)} USD`;
+        return `
+        <div class="mesetas-prod">
+          <a class="mesetas-prod-foto" href="#/producto/${esc(m.id)}" tabindex="-1" aria-hidden="true">${fotoHTML(m)}</a>
+          <div class="mesetas-prod-info">
+            <a class="mesetas-prod-nombre" href="#/producto/${esc(m.id)}">${esc(m.nombre)}</a>
+            <span class="mesetas-prod-precio">${precioTxt}</span>
+          </div>
+          ${tieneOpciones(m)
+            ? `<a class="btn small mesetas-prod-btn" href="#/producto/${esc(m.id)}">Elegir</a>`
+            : `<button type="button" class="btn small mesetas-prod-btn" data-meseta-add="${esc(m.id)}" aria-label="Añadir ${esc(m.nombre)} al carrito">+ Añadir</button>`}
+        </div>`;
+      }).join('')}
+      </div>
       <div class="mesetas-acciones">
-        <button type="button" class="btn small" id="mesetas-btn-add">${meseta ? '+ Añadir al carrito' : 'Ver mesetas disponibles'}</button>
         <button type="button" class="btn small ghost" id="mesetas-btn-faq">¿Por qué?</button>
       </div>
       </div>`;
@@ -1486,19 +1495,14 @@
         cerrarPopupMesetas();
       };
     }
-    const btnAdd = document.getElementById('mesetas-btn-add');
-    if (btnAdd) {
-      btnAdd.onclick = () => {
-        if (meseta) {
-          agregarAlCarrito(meseta.id);
-          cerrarPopupMesetas();
-          if (modo === 'carrito') vistaCarrito();
-        } else {
-          cerrarPopupMesetas();
-          location.hash = veh ? `${urlCatalogoConVeh('partes', veh)}${urlCatalogoConVeh('partes', veh).includes('?') ? '&' : '?'}sub=mesetas` : '#/catalogo/partes?sub=mesetas';
-        }
+    caja.querySelectorAll('[data-meseta-add]').forEach((b) => {
+      b.onclick = () => {
+        agregarAlCarrito(b.dataset.mesetaAdd);
+        cerrarPopupMesetas();
+        if (modo === 'carrito') vistaCarrito();
       };
-    }
+    });
+    caja.querySelectorAll('.mesetas-prod a').forEach((a) => { a.addEventListener('click', () => cerrarPopupMesetas()); });
     const btnFaq = document.getElementById('mesetas-btn-faq');
     if (btnFaq) {
       btnFaq.onclick = () => {

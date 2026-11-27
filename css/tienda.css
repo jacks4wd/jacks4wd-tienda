@@ -1914,12 +1914,21 @@ main.es-inicio + .footer {
   line-height: 1.5;
   color: var(--texto-suave);
 }
+.mesetas-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  max-height: min(46vh, 330px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mesetas-opciones-titulo { margin-bottom: 8px; font-weight: 600; }
 .mesetas-prod {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px;
-  margin-bottom: 14px;
   background: var(--bg);
   border: 1px solid var(--linea);
   border-radius: var(--radio-sm);
@@ -1943,12 +1952,16 @@ main.es-inicio + .footer {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 .mesetas-prod-nombre {
   font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--texto);
+  text-decoration: none;
 }
+.mesetas-prod-nombre:hover { color: var(--primary); }
+.mesetas-prod-btn { flex: none; white-space: nowrap; }
 .mesetas-prod-precio {
   font-size: var(--fs-sm);
   font-weight: 800;
