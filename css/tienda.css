@@ -2164,6 +2164,101 @@ dialog#modal::backdrop { background: rgba(0,0,0,.58); }
 }
 .footer-bottom p { margin: 0; font-size: .82rem; color: #a3a3ad; }
 
+/* ===================== MENÚ DEL CELULAR (botón ☰) ===================== */
+.menu-btn, .menu-movil-extra { display: none; }
+.menu-btn {
+  order: 1;
+  justify-self: start;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-left: 8px;
+  padding: 0;
+  background: transparent;
+  color: #f4f4f5;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: var(--radio-sm);
+  cursor: pointer;
+  transition: background var(--trans), border-color var(--trans);
+}
+.menu-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.28); }
+.menu-btn .ico-cerrar { display: none; }
+body.menu-abierto .menu-btn .ico-abrir { display: none; }
+body.menu-abierto .menu-btn .ico-cerrar { display: block; }
+
+@media (max-width: 900px) {
+  .menu-btn { display: inline-flex; }
+  .nav { display: none; }
+  .catbar { display: none; }
+  body.menu-abierto { overflow: hidden; }
+  /* El panel ocupa el resto de la pantalla bajo la cabecera (top lo fija el JS al abrir) */
+  body.menu-abierto .catbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 95;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 6px 0 28px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface-dark);
+    border-bottom: 0;
+    animation: fadeDown .18s cubic-bezier(.22, 1, .36, 1);
+  }
+  body.menu-abierto .catbar .drop-todas { display: none; }
+  body.menu-abierto .catbar .nav-drop { border-bottom: 1px solid rgba(255,255,255,.08); }
+  body.menu-abierto .catbar .nav-drop-btn {
+    width: 100%;
+    justify-content: space-between;
+    min-height: 54px;
+    padding: 14px 20px;
+    font-size: 1.15rem;
+    border-bottom: 0;
+  }
+  body.menu-abierto .catbar .nav-drop.abierto .nav-drop-btn { color: #ffffff; }
+  body.menu-abierto .catbar .flecha { transition: transform var(--trans); }
+  body.menu-abierto .catbar .nav-drop.abierto .flecha { transform: rotate(180deg); }
+  /* Submenús en línea (acordeón): solo se ven al tocar la categoría */
+  body.menu-abierto .catbar .nav-drop-menu {
+    position: static;
+    display: none;
+    min-width: 0;
+    padding: 0 12px 10px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+  body.menu-abierto .catbar .nav-drop:hover .nav-drop-menu,
+  body.menu-abierto .catbar .nav-drop:focus-within .nav-drop-menu { display: none; }
+  body.menu-abierto .catbar .nav-drop.abierto .nav-drop-menu { display: block; }
+  body.menu-abierto .catbar .nav-drop-menu a { min-height: 44px; color: #e4e4e7; }
+  body.menu-abierto .catbar .nav-drop-menu a.ver-todo { color: #ffffff; border-bottom-color: rgba(255,255,255,.12); }
+  body.menu-abierto .catbar .nav-drop-menu a:hover { background: rgba(255,255,255,.08); }
+  body.menu-abierto .menu-movil-extra {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px 0;
+  }
+  .menu-movil-extra a {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 0 12px;
+    color: #b4b4bc;
+    font-weight: 600;
+    border-radius: var(--radio-sm);
+  }
+  .menu-movil-extra a:hover { background: rgba(255,255,255,.08); color: #ffffff; text-decoration: none; }
+}
+
 /* ===================== RESPONSIVE ===================== */
 @media (max-width: 1060px) {
   .arb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2294,10 +2389,11 @@ dialog#modal::backdrop { background: rgba(0,0,0,.58); }
   outline-offset: 2px;
 }
 
-/* ===================== PANTALLA DE CARGA (4x4 pasando sobre rocas) ===================== */
+/* ===================== PANTALLA DE CARGA (logo de Jacks) ===================== */
 /* Vive dentro de #vista en index.html; la primera vista renderizada la reemplaza.
- * Capa fija a pantalla completa. Ciclo de 2.2s: la roca cruza 460 unidades y la
- * camioneta sube la trompa al 39% (rueda delantera sobre la roca) y la cola al 55%. */
+ * El isotipo es un amortiguador: el resorte se comprime contra su base y rebota (ciclo de
+ * 1,6 s), como una suspensión absorbiendo un golpe. Las piezas son PNG blancos recortados
+ * del logo original, con las mismas proporciones (isotipo 860 u de alto, palabra 650 u). */
 .cargando {
   position: fixed;
   inset: 0;
@@ -2306,102 +2402,59 @@ dialog#modal::backdrop { background: rgba(0,0,0,.58); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 26px;
   padding: 24px 16px;
-  background: #111215;
+  background: #0f0f10;
   color: #e4e4e7;
   animation: cargando-aparece .35s cubic-bezier(.22, 1, .36, 1) .12s both;
 }
-.cargando-escena {
-  width: min(480px, 84vw);
-  height: auto;
-  overflow: hidden;
+.cg-logo {
+  --iso: clamp(38px, 9vw, 52px);           /* ancho del isotipo; todo se escala con él */
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--iso) * .4);
 }
-.cargando-escena * { transform-box: fill-box; }
-
-.cg-suelo { stroke: #3a3d45; stroke-width: 1.2; stroke-linecap: round; }
-.cg-marcas {
-  stroke: #3a3d45;
-  stroke-width: 1.2;
-  stroke-linecap: round;
-  stroke-dasharray: 5 40;
-  animation: cg-marcas .215s linear infinite;
+.cg-iso {
+  width: var(--iso);
+  display: flex;
+  flex-direction: column;
 }
-.cg-roca {
-  fill: #575b66;
-  stroke: #7a7e89;
-  stroke-width: .8;
-  stroke-linejoin: round;
-  animation: cg-roca 2.2s linear infinite;
-}
-.cg-polvo { fill: #575b66; opacity: 0; transform-origin: center; }
-.cg-polvo-1 { animation: cg-polvo .55s ease-out infinite; }
-.cg-polvo-2 { animation: cg-polvo .55s ease-out .27s infinite; }
-
-.cg-camioneta {
+.cg-iso img, .cg-palabra { display: block; width: 100%; height: auto; }
+.cg-resorte {
   transform-origin: 50% 100%;
-  animation: cg-salto 2.2s cubic-bezier(.45, 0, .3, 1) infinite;
+  animation: cg-resorte 1.6s cubic-bezier(.45, 0, .35, 1) infinite;
 }
-.cg-carroceria {
-  animation: cg-rebote .26s ease-in-out infinite alternate;
+.cg-palabra {
+  width: calc(var(--iso) * 5.95);
+  margin-top: calc(var(--iso) * .72);
+  animation: cg-palabra .6s cubic-bezier(.22, 1, .36, 1) .2s both;
 }
-.cg-cuerpo { fill: #e4e4e7; }
-.cg-ventana { fill: #111215; }
-.cg-linea { stroke: #a3a3ad; stroke-width: .7; fill: none; stroke-linecap: round; }
-.cg-detalle { fill: #575b66; }
-.cg-hueco { fill: #08090b; }
-.cg-chasis { fill: #1c1e24; }
-.cg-tacos { fill: none; stroke: #26282e; stroke-width: 1.8; stroke-dasharray: 3 2.066; }
-.cg-tacos-lat { fill: none; stroke: #3a3d45; stroke-width: 1.2; stroke-dasharray: 1.6 2.563; }
-.cg-flare { stroke: #26282e; stroke-width: 3.2; fill: none; stroke-linecap: round; }
-
-.cg-defensa { fill: #575b66; }
-.cg-luz { fill: var(--primary); }
-.cg-rueda {
-  transform-origin: center;
-  animation: cg-gira .42s linear infinite;
-}
-.cg-llanta { fill: #26282e; stroke: #0b0c0e; stroke-width: .8; }
-.cg-rin { fill: #a3a3ad; }
-.cg-rayos { stroke: #26282e; stroke-width: 1.4; stroke-linecap: round; }
-
 .cargando-texto {
   font-family: var(--font-display);
-  font-size: clamp(1.4rem, 3.2vw, 1.9rem);
-  font-weight: 800;
+  font-size: .95rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .1em;
-  color: #ffffff;
+  letter-spacing: .14em;
+  color: #a3a3ad;
 }
 .cg-punto { animation: cg-punto 1.2s steps(1, end) infinite; }
 .cg-punto:nth-child(2) { animation-delay: .2s; }
 .cg-punto:nth-child(3) { animation-delay: .4s; }
 
 @keyframes cargando-aparece { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cg-marcas { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 45; } }
-@keyframes cg-roca { from { transform: translateX(0); } to { transform: translateX(-460px); } }
-@keyframes cg-gira { to { transform: rotate(360deg); } }
-@keyframes cg-rebote { from { transform: translateY(0); } to { transform: translateY(.5px); } }
-@keyframes cg-polvo {
-  0% { opacity: .55; transform: translateX(0) scale(.6); }
-  100% { opacity: 0; transform: translateX(-16px) scale(1.6); }
+@keyframes cg-resorte {
+  0%, 12% { transform: scaleY(1); }
+  34% { transform: scaleY(.72); }   /* golpe: el resorte se comprime */
+  52% { transform: scaleY(1.07); }  /* rebote */
+  66% { transform: scaleY(.97); }
+  78%, 100% { transform: scaleY(1); }
 }
-@keyframes cg-salto {
-  0%, 29% { transform: translateY(0) rotate(0); }
-  36% { transform: translateY(-5px) rotate(-5.5deg); }
-  46% { transform: translateY(-4px) rotate(0); }
-  56% { transform: translateY(-5px) rotate(5.5deg); }
-  63% { transform: translateY(0) rotate(0); }
-  67% { transform: translateY(-1.5px) rotate(0); }
-  71%, 100% { transform: translateY(0) rotate(0); }
-}
+@keyframes cg-palabra { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 @keyframes cg-punto { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .cargando-escena *, .cg-punto { animation: none !important; }
-  .cg-roca { transform: translateX(-40px); }
+  .cg-resorte, .cg-palabra, .cg-punto { animation: none !important; }
 }
-
 /* ===================== ADMIN · FOTOS EN REVISIÓN ===================== */
 .admin-rapido-revision { color: var(--primary); text-decoration-color: var(--primary); font-weight: 700; }
 .badge-revision {

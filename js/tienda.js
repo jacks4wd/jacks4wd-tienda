@@ -213,7 +213,7 @@
     const bar = $('#catbar'); if (!bar) return;
     const cats = categorias();
     bar.innerHTML = `
-      <div class="nav-drop">
+      <div class="nav-drop drop-todas">
         <button type="button" class="nav-drop-btn">Todas las categorías <span class="flecha">▾</span></button>
         <div class="nav-drop-menu mega">
           ${cats.map((c) => `<div class="menu-grupo"><a class="menu-grupo-titulo" href="${hrefCat(c.id)}">${esc(c.nombre)}</a>${enlacesCategoria(c)}</div>`).join('')}
@@ -226,14 +226,20 @@
             <a class="ver-todo" href="${hrefCat(c.id)}">Ver todo</a>
             ${enlacesCategoria(c)}
           </div>
-        </div>`).join('')}`;
+        </div>`).join('')}
+      <div class="menu-movil-extra">
+        <a href="#/">Inicio</a>
+        <a href="#/faq">Preguntas frecuentes</a>
+      </div>`;
 
-    const tactil = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    // En el celular (menú desplegable) cada categoría se abre y cierra con un toque, como un acordeón
+    const tactilDisp = window.matchMedia && window.matchMedia('(hover: none)').matches;
     const drops = $$('#catbar .nav-drop');
     drops.forEach((d) => {
       const btn = d.querySelector('.nav-drop-btn');
-      // Escritorio: el menú se abre con el ratón (CSS). Táctil: el primer toque abre el menú.
+      // Escritorio: el menú se abre con el ratón (CSS). Táctil o menú del celular: el toque abre/cierra.
       btn.onclick = (e) => {
+        const tactil = tactilDisp || document.body.classList.contains('menu-abierto');
         if (btn.tagName === 'A' && !tactil) return;      // enlace normal
         if (btn.tagName === 'A') e.preventDefault();
         e.stopPropagation();
@@ -246,8 +252,32 @@
     });
 
     if (_cerrarShop) document.removeEventListener('click', _cerrarShop);
-    _cerrarShop = (e) => { if (!e.target.closest('#catbar')) drops.forEach((x) => x.classList.remove('abierto')); };
+    _cerrarShop = (e) => { if (!e.target.closest('#catbar') && !e.target.closest('#menu-btn')) drops.forEach((x) => x.classList.remove('abierto')); };
     document.addEventListener('click', _cerrarShop);
+    // Menú del celular: al elegir un destino se cierra
+    bar.querySelectorAll('.nav-drop-menu a, .menu-movil-extra a').forEach((a) => a.addEventListener('click', () => menuMovil(false)));
+  }
+
+  // ===================== MENÚ DEL CELULAR (botón ☰) =====================
+  // En pantallas angostas la barra de categorías se oculta y el botón la abre como panel.
+  function menuMovil(abrir) {
+    const btn = $('#menu-btn'); const bar = $('#catbar'); if (!btn || !bar) return;
+    const abierto = typeof abrir === 'boolean' ? abrir : !document.body.classList.contains('menu-abierto');
+    const fijarTop = () => { bar.style.top = `${Math.max(0, Math.round($('.topbar').getBoundingClientRect().bottom))}px`; };
+    if (abierto) fijarTop();
+    document.body.classList.toggle('menu-abierto', abierto);
+    if (abierto) requestAnimationFrame(fijarTop); // al bloquear el scroll la cabecera puede moverse
+    btn.setAttribute('aria-expanded', String(abierto));
+    btn.setAttribute('aria-label', abierto ? 'Cerrar menú' : 'Abrir menú');
+    if (!abierto) $$('#catbar .nav-drop').forEach((x) => x.classList.remove('abierto'));
+  }
+  function iniciarMenuMovil() {
+    const btn = $('#menu-btn'); if (!btn) return;
+    btn.onclick = () => menuMovil();
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-abierto')) { menuMovil(false); btn.focus(); } });
+    window.addEventListener('hashchange', () => menuMovil(false));
+    // Si la pantalla se agranda (girar el teléfono, ventana), el panel no queda abierto
+    window.matchMedia('(min-width: 901px)').addEventListener?.('change', (m) => { if (m.matches) menuMovil(false); });
   }
 
   // Parámetros del hash: #/catalogo/merch?tipo=franelas&gen=Hombres
@@ -2789,6 +2819,7 @@
       agregarAlCarrito(btn.dataset.quickAdd);
     });
     pintarNav();
+    iniciarMenuMovil();
     pintarBadge();
     window.addEventListener('hashchange', rutear);
     await cargarCatalogo();
