@@ -166,8 +166,9 @@
   function pintarNav() {
     $('#nav').innerHTML = `
       <a href="#/" data-ruta="#/">Inicio</a>
-      <a href="#/faq" data-ruta="#/faq">FAQ</a>
-      <a href="#/admin" data-ruta="#/admin" class="solo-admin-link">Administrar</a>`;
+      <a href="#/faq" data-ruta="#/faq">FAQ</a>`;
+    // Sin enlace "Administrar" a la vista: la tienda es pública. El panel se abre escribiendo
+    // #/admin al final de la dirección (https://jacks4wd.com/#/admin).
     pintarCatBar();
   }
 
@@ -1262,7 +1263,7 @@
           </div>` : ''}
           <div class="precio" id="detalle-precio">${fmt(precioDe(p, p.opciones?.valores?.[0]))} <small class="moneda">USD</small></div>
           ${opciones}
-          <p class="desc">${esc(p.descripcion)}</p>
+          ${String(p.descripcion || '').trim() ? `<p class="desc">${esc(p.descripcion)}</p>` : ''}
           ${compat}
           <button class="btn grande" id="btn-add">Añadir al pedido</button>
         </div>
@@ -3509,6 +3510,14 @@
       // Sin foto y sin foto pendiente de aprobar → fuera
       catalogo.productos = catalogo.productos.filter((p) => p.foto || (p.fotosExtra || []).length || sugerenciaFoto(p.id));
       cfg.migradoLimpieza1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 27-11-2026): se vacían las descripciones de todos los productos
+    // (muchas eran genéricas); el dueño las escribe a mano desde Administrar.
+    if (!cfg.migradoSinDescripciones1) {
+      (catalogo.productos || []).forEach((p) => { p.descripcion = ''; });
+      cfg.migradoSinDescripciones1 = true;
       guardarCatalogoLocal();
     }
 
