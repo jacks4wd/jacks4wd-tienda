@@ -1073,14 +1073,6 @@ main.es-inicio + .footer {
   text-decoration: none;
 }
 .card a.cuerpo:hover { text-decoration: none; }
-.card .marca {
-  font-size: .76rem;
-  color: var(--muted);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  line-height: 1.3;
-}
 .card .nombre {
   font-weight: 700;
   line-height: 1.32;
@@ -1103,6 +1095,15 @@ main.es-inicio + .footer {
   color: var(--texto);
   font-size: 1.2rem;
   margin: 0;
+}
+.card .precio .desde {
+  display: block;
+  font-size: .72rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  line-height: 1.1;
 }
 .card .precio .moneda {
   font-size: .75rem;

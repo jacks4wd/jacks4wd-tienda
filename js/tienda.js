@@ -394,6 +394,17 @@
   }
   // Varias fotos por producto: p.foto es la principal (tarjetas, carrito, pop-up) y p.fotosExtra las demás
   const MAX_FOTOS = 8;
+  // Precio según la opción elegida (opciones.precios = { valor: precio }); si no, el precio base.
+  function precioDe(p, variante) {
+    const v = p?.opciones?.precios?.[variante];
+    return Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : Number(p?.precio) || 0;
+  }
+  // Rango de precios de un producto con opciones de distinto precio: [mínimo, máximo]
+  function rangoPrecios(p) {
+    const vals = (p?.opciones?.valores || []).map((v) => precioDe(p, v));
+    if (!vals.length) return [Number(p?.precio) || 0, Number(p?.precio) || 0];
+    return [Math.min(...vals), Math.max(...vals)];
+  }
   function fotosDe(p) {
     const extra = Array.isArray(p?.fotosExtra) ? p.fotosExtra.filter(Boolean) : [];
     return [p?.foto, ...extra].filter(Boolean).filter((f, i, a) => a.indexOf(f) === i);
@@ -427,22 +438,9 @@
     const cat = categorias().find((c) => c.id === p.categoria);
     return (cat?.subcategorias || []).find((s) => s.id === p.subcategoria)?.nombre || '';
   }
-  function subtituloTarjeta(p, vehActivo = null) {
-    const partes = [];
-    if (p.marca) partes.push(p.marca);
-    const subNom = nombreSubcategoria(p);
-    if (subNom) partes.push(subNom);
-    if (vehActivo && Array.isArray(p.compatibles) && p.compatibles.length) {
-      partes.push(`${vehActivo.marca} ${vehActivo.modelo}${vehActivo.genNombre ? ' ' + vehActivo.genNombre : ''}`);
-    } else if (Array.isArray(p.compatibles) && p.compatibles.length === 1) {
-      const c = p.compatibles[0];
-      partes.push(`${c.marca} ${c.modelo}`);
-    }
-    return partes.join(' · ');
-  }
-  function tarjetaProducto(p, vehActivo = null) {
+  function tarjetaProducto(p) {
     const tieneOpciones = Boolean(p.opciones && Array.isArray(p.opciones.valores) && p.opciones.valores.length);
-    const sub = subtituloTarjeta(p, vehActivo);
+    const [pMin, pMax] = rangoPrecios(p);
     return `<article class="card">
       <div class="foto-wrap">
         <a class="foto" href="#/producto/${esc(p.id)}" aria-label="${esc(p.nombre)}">
@@ -454,10 +452,9 @@
           : `<button type="button" class="card-quick-btn" data-quick-add="${esc(p.id)}">+ Añadir al pedido</button>`}
       </div>
       <a class="cuerpo" href="#/producto/${esc(p.id)}">
-        ${sub ? `<span class="marca">${esc(sub)}</span>` : ''}
         <span class="nombre">${esc(p.nombre)}</span>
         <div class="card-pie">
-          <span class="precio">${fmt(p.precio)} <small class="moneda">USD</small></span>
+          <span class="precio">${pMin !== pMax ? '<small class="desde">Desde</small> ' : ''}${fmt(pMin)} <small class="moneda">USD</small></span>
           <span class="card-flecha" aria-hidden="true">${SVG_ICONOS.arrowRight}</span>
         </div>
       </a>
@@ -1197,7 +1194,7 @@
     const esCompatVeh = vehActivo && Array.isArray(p.compatibles) && p.compatibles.length && productoCompatibleConVeh(p, vehActivo);
     const opciones = p.opciones && p.opciones.valores && p.opciones.valores.length
       ? `<div class="opciones"><label>${esc(p.opciones.nombre || 'Opción')}
-          <select id="sel-opcion">${p.opciones.valores.map((v) => `<option>${esc(v)}</option>`).join('')}</select>
+          <select id="sel-opcion">${p.opciones.valores.map((v) => `<option value="${esc(v)}">${esc(v)}${p.opciones.precios?.[v] ? ` — ${fmt(precioDe(p, v))}` : ''}</option>`).join('')}</select>
         </label></div>`
       : '';
     const compat = (p.compatibles && p.compatibles.length)
@@ -1233,14 +1230,16 @@
             ${p.altura ? `<span class="spec-tag">Elevación: ${esc(p.altura)}</span>` : ''}
             ${esCompatVeh ? `<span class="spec-tag spec-ok">Compatible: ${esc(vehActivo.marca + ' ' + vehActivo.modelo + (vehActivo.genNombre ? ' ' + vehActivo.genNombre : ''))}</span>` : ''}
           </div>` : ''}
-          <div class="precio">${fmt(p.precio)} <small class="moneda">USD</small></div>
+          <div class="precio" id="detalle-precio">${fmt(precioDe(p, p.opciones?.valores?.[0]))} <small class="moneda">USD</small></div>
+          ${opciones}
           <p class="desc">${esc(p.descripcion)}</p>
           ${compat}
-          ${opciones}
           <button class="btn grande" id="btn-add">Añadir al pedido</button>
         </div>
       </div>`;
     $('#btn-add').onclick = () => agregarAlCarrito(p.id, $('#sel-opcion')?.value);
+    const selOpc = $('#sel-opcion');
+    if (selOpc) selOpc.onchange = () => { $('#detalle-precio').innerHTML = `${fmt(precioDe(p, selOpc.value))} <small class="moneda">USD</small>`; };
     // Galería: las miniaturas cambian la foto grande
     const listaFotos = fotosDe(p);
     $$('#vista .detalle-mini').forEach((b) => (b.onclick = () => {
@@ -1470,7 +1469,7 @@
       $('#vista').innerHTML = `<h1>Carrito</h1><p class="vacio">Tu carrito está vacío.</p><div style="text-align:center"><a class="btn" href="#/catalogo/all">Ver productos</a></div>`;
       return;
     }
-    const total = carrito.reduce((a, x) => a + (productoPorId(x.id)?.precio || 0) * x.cant, 0);
+    const total = carrito.reduce((a, x) => { const p = productoPorId(x.id); return a + (p ? precioDe(p, x.variante) : 0) * x.cant; }, 0);
     const conDesc = desc ? total * (1 - desc.desc / 100) : total;
     $('#vista').innerHTML = `
       <h1>Tu pedido</h1>
@@ -1488,7 +1487,7 @@
                 <button type="button" data-dec="${esc(x.clave)}" aria-label="Disminuir cantidad">−</button><span>${x.cant}</span><button type="button" data-inc="${esc(x.clave)}" aria-label="Aumentar cantidad">+</button>
               </div>
             </div>
-            <div class="precio">${fmt(p.precio * x.cant)}</div>
+            <div class="precio">${fmt(precioDe(p, x.variante) * x.cant)}</div>
             <button type="button" class="carrito-quitar" data-del="${esc(x.clave)}" aria-label="Eliminar ${esc(p.nombre)} del carrito" title="Eliminar del carrito">✕</button>
           </div>`;
         }).join('')}
@@ -1524,7 +1523,7 @@
     const desc = clienteRegistrado();
     const lineas = carrito.map((x) => {
       const p = productoPorId(x.id);
-      return `• ${p.nombre}${x.variante ? ' (' + x.variante + ')' : ''} x${x.cant} — ${fmt(p.precio * x.cant)}`;
+      return `• ${p.nombre}${x.variante ? ' (' + x.variante + ')' : ''} x${x.cant} — ${fmt(precioDe(p, x.variante) * x.cant)}`;
     }).join('\n');
     const mensaje = `Hola ${CFG.nombre}! Quiero hacer un pedido:\n\n${lineas}\n\nTotal: ${fmt(total)} USD\nPago: ${pago}\n${desc ? 'Cliente registrado (descuento aplicado).\n' : ''}\nMi nombre es: `;
     window.open(`https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
@@ -2519,9 +2518,12 @@
         <label style="display:block;margin-top:10px">Descripción
           <textarea name="descripcion" rows="3" style="width:100%;padding:10px;border:1px solid var(--linea);border-radius:8px;font:inherit">${esc(p.descripcion)}</textarea>
         </label>
-        <label style="display:block;margin-top:10px">Opciones (tallas/colores), separadas por coma — dejar vacío si no aplica
-          <input name="opciones" value="${esc((p.opciones?.valores || []).join(', '))}" placeholder="S, M, L, XL" style="width:100%;padding:10px;border:1px solid var(--linea);border-radius:8px;font:inherit">
-        </label>
+        <div class="grid" style="grid-template-columns:1fr 3fr;gap:10px;margin-top:10px">
+          <label>Nombre de la opción<input name="opcionesNombre" value="${esc(p.opciones?.nombre || '')}" placeholder="Talla, Color, Elevación…" style="width:100%;padding:10px;border:1px solid var(--linea);border-radius:8px;font:inherit"></label>
+          <label>Opciones, separadas por coma. Si una cuesta distinto: <em>valor = precio</em>. Vacío si no aplica
+            <input name="opciones" value="${esc((p.opciones?.valores || []).map((v) => (p.opciones.precios?.[v] ? `${v} = ${p.opciones.precios[v]}` : v)).join(', '))}" placeholder='S, M, L — o — 2" = 1496, 3" = 1521' style="width:100%;padding:10px;border:1px solid var(--linea);border-radius:8px;font:inherit">
+          </label>
+        </div>
 
         <div style="margin-top:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -2683,9 +2685,17 @@
       p.tipo = p.categoria === 'merch' ? f.tipo.value : '';
       p.subcategoria = p.categoria === 'merch' ? '' : f.subcategoria.value;
       p.genero = p.categoria === 'merch' ? f.genero.value : '';
-      const opc = f.opciones.value.split(',').map((x) => x.trim()).filter(Boolean);
-      if (opc.length) p.opciones = { nombre: 'Opción', valores: opc };
-      else p.opciones = null;
+      // Opciones: "valor" o "valor = precio" separadas por coma (p. ej. 2" = 1496, 3" = 1521)
+      const opc = f.opciones.value.split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
+        const m = x.match(/^(.*?)\s*=\s*([\d.]+)\s*$/);
+        return m ? { v: m[1].trim(), precio: Number(m[2]) } : { v: x, precio: null };
+      }).filter((o) => o.v);
+      if (opc.length) {
+        const precios = {};
+        opc.forEach((o) => { if (Number.isFinite(o.precio) && o.precio > 0) precios[o.v] = o.precio; });
+        p.opciones = { nombre: f.opcionesNombre.value.trim() || 'Opción', valores: opc.map((o) => o.v) };
+        if (Object.keys(precios).length) p.opciones.precios = precios;
+      } else p.opciones = null;
       document.removeEventListener('paste', alPegar);
       if (nuevo) catalogo.productos.push(p);
       cerrarModal(); guardarCatalogoLocal(); refrescarAdmin();
@@ -3104,7 +3114,7 @@
       ]);
       if (Array.isArray(catalogo.productos)) {
         // Solo se borra si de verdad sigue sin foto (por si se le subió una a mano)
-        catalogo.productos = catalogo.productos.filter((p) => !(sinFoto.has(p.id) && !p.foto && !(p.fotos || []).length));
+        catalogo.productos = catalogo.productos.filter((p) => !(sinFoto.has(p.id) && !p.foto && !(p.fotosExtra || []).length));
       }
       cfg.migradoBedcoversSinFoto1 = true;
       guardarCatalogoLocal();
@@ -3209,12 +3219,12 @@
         ['WTTacoma2024+HP', 'floorhp', 'Alfombras HP Tacoma 2024+ negras', 260, ['tacC'], '441846-1-3IM'],
         ['WTRoraima', 'combo', 'Combo Roraima 2007-2021 negro', 400, ['lc200'], '444231+441572+40356'],
         ['WTRoraimaBeige', 'combo', 'Combo Roraima 2007-2021 beige', 400, ['lc200'], '454231+451572+41356'],
-        ['WTLC300', 'combo', 'Combo Land Cruiser 300 / LX600 2022+ 3 filas negro', 490, ['lc300'], '4417131-2-3+401521'],
-        ['WTLC300Beige', 'combo', 'Combo Land Cruiser 300 / LX600 2022+ 3 filas beige', 490, ['lc300'], '4517131-2-3+411521'],
+        ['WTLC300', 'combo', 'Combo Land Cruiser 300 2022+ 3 filas negro', 490, ['lc300'], '4417131-2-3+401521'],
+        ['WTLC300Beige', 'combo', 'Combo Land Cruiser 300 2022+ 3 filas beige', 490, ['lc300'], '4517131-2-3+411521'],
         ['WTSerie76/79', 'floor', 'Alfombras Land Cruiser Serie 76 / 79 2010-2025 negras', 250, ['s76', 's79'], '441899-1-2V'],
         ['WTSerie76/79Be', 'floor', 'Alfombras Land Cruiser Serie 76 / 79 2010-2025 beige', 250, ['s76', 's79'], '451899-1-2V'],
-        ['WTAutana', 'combo', 'Combo Autana / Burbuja 1993-2007 beige', 390, ['autana'], '45533-1-2+41010'],
-        ['WTAutanaNeg', 'combo', 'Combo Autana / Burbuja 1993-2007 negro', 390, ['autana'], '44533-1-2+40010'],
+        ['WTAutana', 'combo', 'Combo Autana 1993-2007 beige', 390, ['autana'], '45533-1-2+41010'],
+        ['WTAutanaNeg', 'combo', 'Combo Autana 1993-2007 negro', 390, ['autana'], '44533-1-2+40010'],
         ['WTMontSportFloor', 'floor', 'Alfombras Montero Sport 2014-2018 negras', 240, ['montSport'], '447551-2'],
         ['WTMontSportCargo', 'cargo', 'Cargoliner Montero Sport 2014-2018 negro', 150, ['montSport'], '40489'],
         ['WTMontSport2019', 'combo', 'Combo Montero Sport 2019+ 3 filas negro', 465, ['montSport'], '44970-1-2-3+40914'],
@@ -3224,13 +3234,13 @@
         ['WTExplorerST2021', 'combo', 'Combo Explorer ST 2021+ 3 filas negro', 465, ['explorer'], '4415751-2-4+401304'],
         ['WTF250-2ptas', 'floor', 'Alfombras F-250 2011-2016 2 puertas negras', 150, ['f250'], '443211'],
         ['WTF250-4ptas', 'floor', 'Alfombras F-250 2011-2013 4 puertas negras', 260, ['f250'], '443211+443052'],
-        ['WTLibertyKK', 'combo', 'Combo Cherokee KK (Liberty) 2008-2015 negro', 360, ['kk'], '443881+441402+40366'],
-        ['WTWK05-10', 'combo', 'Combo Grand Cherokee WK / Commander 2005-2010 negro', 360, ['wk'], '440131+440132+40280'],
+        ['WTLibertyKK', 'combo', 'Combo Cherokee KK 2008-2015 negro', 360, ['kk'], '443881+441402+40366'],
+        ['WTWK05-10', 'combo', 'Combo Grand Cherokee WK 2005-2010 negro', 360, ['wk'], '440131+440132+40280'],
         ['WTWK2-11-13', 'combo', 'Combo Grand Cherokee WK2 2011-2013 negro', 365, ['wk2'], '443241+443242+40469'],
         ['WTWK2-14-18', 'combo', 'Combo Grand Cherokee WK2 2014-2020 negro', 365, ['wk2'], '444851+443242+40469'],
         ['WTFJCruiser', 'combo', 'Combo FJ Cruiser 2007-2024 negro', 360, ['fj'], '443111+443112+40300'],
         ['WTSequoia2023', 'combo', 'Combo Sequoia 2023+ negro', 480, ['seqB'], '441784-1-2-3+401571'],
-        ['WTKaiceneHunter', 'floor', 'Alfombras Kaicene F70 / Changan Hunter 2020+ negras', 250, ['kaicene'], '4416881-2'],
+        ['WTKaiceneHunter', 'floor', 'Alfombras Kaicene F70 2020+ negras', 250, ['kaicene'], '4416881-2'],
         ['WTLuvD-MAX', 'floor', 'Alfombras Luv D-Max 2005-2014 negras', 250, ['luv'], '440991-2'],
         ['WTRanger2020', 'floor', 'Alfombras Ranger 2020-2023 negras', 250, ['px3'], '4416401+4415182'],
         ['WTRanger2024', 'floor', 'Alfombras Ranger MY22 / Raptor 2024+ negras', 240, ['my22'], '4418361-2'],
@@ -3282,6 +3292,148 @@
       });
 
       cfg.migradoWeatherTech1 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 26-11-2026): WeatherTech con fotos de estudio uniformes (combos con todas
+    // sus piezas). Se quitan las fotos aprobadas de la primera tanda para que las nuevas pasen por
+    // "Fotos en revisión", y se quitan de los nombres autos que no están en la tienda.
+    if (!cfg.migradoWeatherTech2) {
+      const rev = cfg.fotosRevision || {};
+      const nombres = {
+        'weathertech-wtlc300': 'Combo Land Cruiser 300 2022+ 3 filas negro WeatherTech',
+        'weathertech-wtlc300beige': 'Combo Land Cruiser 300 2022+ 3 filas beige WeatherTech',
+        'weathertech-wtlibertykk': 'Combo Cherokee KK 2008-2015 negro WeatherTech',
+        'weathertech-wtwk05-10': 'Combo Grand Cherokee WK 2005-2010 negro WeatherTech',
+        'weathertech-wtkaicenehunter': 'Alfombras Kaicene F70 2020+ negras WeatherTech',
+        'weathertech-wtautana': 'Combo Autana 1993-2007 beige WeatherTech',
+        'weathertech-wtautananeg': 'Combo Autana 1993-2007 negro WeatherTech',
+      };
+      (catalogo.productos || []).forEach((p) => {
+        if (p.marca !== 'WeatherTech') return;
+        if (nombres[p.id]) p.nombre = nombres[p.id];
+        const e = rev[p.id];
+        if (e && e.estado === 'aprobada' && /img\/productos\/weathertech-[^/]+\.jpg$/.test(e.foto || '')) {
+          p.foto = '';
+          p.fotosExtra = [];
+        }
+      });
+      cfg.migradoWeatherTech2 = true;
+      guardarCatalogoLocal();
+    }
+
+    // Migración (una vez, 27-11-2026): limpieza del catálogo.
+    // 1) Variantes casi iguales (elevación, color, versión, cabina…) se unen en UN producto con
+    //    selector; cada opción conserva su precio (opciones.precios). 2) Duplicados exactos fuera.
+    // 3) Nombres más claros. 4) Se eliminan los productos que siguen sin foto (ni foto en revisión).
+    if (!cfg.migradoLimpieza1) {
+      const prods = (catalogo.productos = Array.isArray(catalogo.productos) ? catalogo.productos : []);
+      const porId = (id) => prods.find((p) => p.id === id);
+      const quitar = new Set();
+      // WeatherTech: fuera las fotos aprobadas de la primera tanda (estilo mezclado); quedan las
+      // nuevas de estudio (-v2) en revisión. Las fotos subidas a mano no se tocan.
+      const revWT = cfg.fotosRevision || {};
+      prods.forEach((p) => {
+        if (p.marca !== 'WeatherTech') return;
+        const e = revWT[p.id];
+        if (e && e.estado === 'aprobada' && /img\/productos\/weathertech-[^/]+\.jpg$/.test(e.foto || '') && !/-v2\.jpg$/.test(e.foto)) {
+          p.foto = '';
+          p.fotosExtra = [];
+        }
+      });
+      // [id que se queda, nombre nuevo, nombre de la opción, [[id, etiqueta], ...]]
+      const grupos = [
+        ['ome-nitrocharger-2-autana', 'Kit de Suspensión Nitrocharger Autana', 'Elevación', [['ome-nitrocharger-2-autana', '2"'], ['ome-nitrocharger-2-autana-light', '2" Light'], ['ome-nitrocharger-3-autana', '3"'], ['ome-nitrocharger-4-autana', '4"'], ['ome-nitrocharger-5-autana', '5"']]],
+        ['ome-nitrocharger-lc300-soft-medium', 'Kit de Suspensión Nitrocharger LC300', 'Versión', [['ome-nitrocharger-lc300-soft-medium', 'Soft / Medium'], ['ome-nitrocharger-lc300-hd', 'HD']]],
+        ['ome-nitrocharger-lc250-2-2-8-diesel-medium', 'Kit de Suspensión Nitrocharger LC250', 'Versión', [['ome-nitrocharger-lc250-2-2-8-diesel-medium', '2" 2.8 Diesel Medium'], ['ome-nitrocharger-lc250-3-hybrid-i-forcemax', '3" Hybrid i-FORCE MAX']]],
+        ['ome-nitrocharger-machito-78-y-79-con-bolsas-de-aire', 'Kit de Suspensión Nitrocharger Machito 78 y 79 con bolsas de aire', 'Versión', [['ome-nitrocharger-machito-78-y-79-con-bolsas-de-aire', 'Con bolsas de aire'], ['ome-nitrocharger-machito-78-y-79-con-bolsas-de-aire-modulo-y-kit', 'Con bolsas de aire, módulo y kit espiche']]],
+        ['ome-nitrocharger-hilux-revo-2016-on', 'Kit de Suspensión Nitrocharger Hilux Revo 2016+', 'Versión', [['ome-nitrocharger-hilux-revo-2016-on', 'Estándar'], ['ome-nitrocharger-hilux-revo-2016-on-con-bolsas-de-aire', 'Con bolsas de aire'], ['ome-nitrocharger-hilux-revo-2016-on-con-bolsas-de-aire-modulo-y', 'Con bolsas de aire, módulo y kit espiche']]],
+        ['ome-nitrocharger-patrol-3', 'Kit de Suspensión Nitrocharger Patrol', 'Elevación', [['ome-nitrocharger-patrol-3', '3"'], ['ome-nitrocharger-patrol-4-hd-400kg', '4" HD (400 kg)']]],
+        ['ome-bp51-autana-2-3', 'Kit de Suspensión BP-51 Autana', 'Elevación', [['ome-bp51-autana-2-3', '2-3"'], ['ome-bp51-autana-4', '4"']]],
+        ['ome-bp51-lc250-2-2-8-diesel-medium', 'Kit de Suspensión BP-51 LC250', 'Versión', [['ome-bp51-lc250-2-2-8-diesel-medium', '2" 2.8 Diesel Medium'], ['ome-bp51-lc250-3-hybrid-i-forcemax', '3" Hybrid i-FORCE MAX']]],
+        ['ome-mt64-roraima-lc200-2007-2021-hd', 'Kit de Suspensión MT64 Roraima LC200 2007-2021', 'Versión', [['ome-mt64-roraima-lc200-2007-2021', 'Estándar'], ['ome-mt64-roraima-lc200-2007-2021-hd', 'HD']]],
+        ['dob-ims-3in-autana-serie-80', 'Kit de Suspensión IMS Autana Serie 80', 'Elevación', [['dob-ims-3in-autana-serie-80', '3"'], ['dob-ims-4in-autana-serie-80', '4"'], ['dob-ims-6in-autana-serie-80', '6"']]],
+        ['dob-mra-3in-autana-serie-80', 'Kit de Suspensión MRA Autana Serie 80', 'Elevación', [['dob-mra-3in-autana-serie-80', '3"'], ['dob-mra-4in-autana-serie-80', '4"'], ['dob-mra-6in-autana-serie-80', '6"']]],
+        ['dob-mra-3in-nissan-patrol', 'Kit de Suspensión MRA Nissan Patrol', 'Elevación', [['dob-mra-3in-nissan-patrol', '3"'], ['dob-mra-4in-nissan-patrol', '4"'], ['dob-mra-6in-nissan-patrol', '6"']]],
+        ['dob-twintube-3in-autana-serie-80', 'Kit de Suspensión Twintube Autana Serie 80', 'Elevación', [['dob-twintube-3in-autana-serie-80', '3"'], ['dob-twintube-3in-hd-autana-serie-80', '3" HD'], ['dob-twintube-4in-autana-serie-80', '4"'], ['dob-twintube-6in-autana-serie-80', '6"']]],
+        ['camburg-cam-310130', 'Mesetas superiores (brazos de control) Camburg Uniball 1.25" Fortuner / Hilux / 4Runner / FJ / Tacoma 2005-2019 (par)', 'Versión', [['camburg-cam-310130', 'Con tapas guardapolvo (310130)'], ['camburg-cam-310036', 'Sin tapas guardapolvo (310036)']]],
+        ['camburg-cam-310184-gry', 'Mesetas superiores (brazos de control) Camburg KINETIC Tacoma / 4Runner / Fortuner / Revo / FJ 2005-2023 (par)', 'Color', [['camburg-cam-310184-gry', 'Gris'], ['camburg-cam-310184-blu', 'Azul'], ['camburg-cam-310184-gld', 'Amarillo']]],
+        ['camburg-cam-310194-gry', 'Mesetas superiores (brazos de control) Camburg KINETIC LC300 / LC250 / Tacoma 2024+ (par)', 'Color', [['camburg-cam-310194-gry', 'Gris'], ['camburg-cam-310194-blu', 'Azul'], ['camburg-cam-310194-gld', 'Amarillo']]],
+        ['bakflip-448440', 'Tapa dura plegable BAKFlip MX4 Tundra 2022+', 'Cabina', [['bakflip-448440', 'Crew Max / TRD PRO (cajón 5\'5")'], ['bakflip-448441', 'Double Cab (cajón 6\'5")']]],
+        ['rollnlock-rc575e', 'Tapa enrollable eléctrica Roll-N-Lock E-Series Tundra 2022+', 'Cabina', [['rollnlock-rc575e', 'Crew Max / TRD PRO (cajón 5\'7")'], ['rollnlock-rc576e', 'Double Cab (cajón 6\'7")']]],
+        ['rollnlock-lg517m', 'Tapa enrollable Roll-N-Lock M-Series Hilux Revo 2015-2024 doble cabina', 'Versión', [['rollnlock-lg517m', 'Con ganchos'], ['rollnlock-lg518m', 'Sin ganchos']]],
+        // WeatherTech
+        ['weathertech-wtfortunervzlaneg', 'Combo Fortuner 2012-2020 3 filas WeatherTech', 'Color', [['weathertech-wtfortunervzlaneg', 'Negro'], ['weathertech-wtfortunervzla', 'Beige']]],
+        ['weathertech-wtkavak2012-17', 'Alfombras Hilux Kavak 2011-2020 WeatherTech', 'Color', [['weathertech-wtkavak2012-17', 'Gris'], ['weathertech-wtkavak2012-17neg', 'Negro']]],
+        ['weathertech-wt4runner2004negro', 'Combo 4Runner 2003-2009 WeatherTech', 'Color', [['weathertech-wt4runner2004negro', 'Negro'], ['weathertech-wt4runner2004gris', 'Gris'], ['weathertech-wt4runner2004beige', 'Beige']]],
+        ['weathertech-wt4runner2010-18', 'Combo 4Runner 2010-2024 negro WeatherTech', 'Versión', [['weathertech-wt4runner2010-18', 'Estándar'], ['weathertech-wt4runner2010-18trd', 'TRD Pro']]],
+        ['weathertech-40486', 'Cargoliner 4Runner 2010-2024 negro WeatherTech', 'Versión', [['weathertech-40486', 'Estándar'], ['weathertech-40440', 'TRD Pro']]],
+        ['weathertech-wt4runner2025plus', 'Alfombras 4Runner 2025+ negras WeatherTech', 'Versión', [['weathertech-wt4runner2025plus', 'Gasolina'], ['weathertech-wt4runner2025plusiforce', 'Híbrida i-FORCE MAX'], ['weathertech-wt4runner2025plushp', 'HP, gasolina']]],
+        ['weathertech-401828', 'Cargoliner 4Runner 2025+ negro WeatherTech', 'Versión', [['weathertech-401828', '2 filas'], ['weathertech-401829', '3 filas'], ['weathertech-401831', 'Híbrida, 2 filas']]],
+        ['weathertech-wtlc250-gx-cool', 'Alfombras HP Land Cruiser LC250 2024+ 2 filas negras WeatherTech', 'Versión', [['weathertech-wtlc250-gx-cool', 'Con Cooling System'], ['weathertech-wtlc250-gx-nocool', 'Sin Cooling System']]],
+        ['weathertech-401773', 'Cargoliner Land Cruiser LC250 2024+ WeatherTech', 'Versión', [['weathertech-401773', 'Modelo americano, 2 filas'], ['weathertech-401774', 'Modelo japonés, 2 filas'], ['weathertech-401775', 'Modelo japonés, 3 filas (3.ª fila recogida)'], ['weathertech-401776', 'Modelo japonés, 3 filas (corto)']]],
+        ['weathertech-wtmeruneg', 'Combo Merú WeatherTech', 'Color', [['weathertech-wtmeruneg', 'Negro'], ['weathertech-wtmeru', 'Gris']]],
+        ['weathertech-wttundra2014plus5-5', 'Alfombras Tundra 2014-2021 negras WeatherTech', 'Cajón', [['weathertech-wttundra2014plus5-5', '5,5 pies'], ['weathertech-wttundra2014plus6-5', '6,5 pies']]],
+        ['weathertech-wttundra2022dobl', 'Alfombras Tundra 2022+ negras WeatherTech', 'Cabina', [['weathertech-wttundra2022dobl', 'Double Cab (cajón 6,5 pies)'], ['weathertech-wttundra2022crew', 'Crew Max (cajón 5,5 pies)']]],
+        ['weathertech-wttacoma', 'Alfombras Tacoma 2016-2023 negras WeatherTech', 'Año', [['weathertech-wttacoma', '2018-2023'], ['weathertech-wttacoma16-17', '2016-2017']]],
+        ['weathertech-wtroraima', 'Combo Roraima 2007-2021 WeatherTech', 'Color', [['weathertech-wtroraima', 'Negro'], ['weathertech-wtroraimabeige', 'Beige']]],
+        ['weathertech-wtlc300', 'Combo Land Cruiser 300 2022+ 3 filas WeatherTech', 'Color', [['weathertech-wtlc300', 'Negro'], ['weathertech-wtlc300beige', 'Beige']]],
+        ['weathertech-wtserie76-79', 'Alfombras Land Cruiser Serie 76 / 79 2010-2025 WeatherTech', 'Color', [['weathertech-wtserie76-79', 'Negro'], ['weathertech-wtserie76-79be', 'Beige']]],
+        ['weathertech-wtautananeg', 'Combo Autana 1993-2007 WeatherTech', 'Color', [['weathertech-wtautananeg', 'Negro'], ['weathertech-wtautana', 'Beige']]],
+        ['weathertech-wtexplorerst2021', 'Combo Explorer 3 filas negro WeatherTech', 'Año', [['weathertech-wtexplorerst2021', 'ST 2021+'], ['weathertech-wtexplorer15-20', '2015-2020'], ['weathertech-wtexplorer11-14', '2011-2014']]],
+        ['weathertech-wtf250-4ptas', 'Alfombras F-250 2011-2016 negras WeatherTech', 'Cabina', [['weathertech-wtf250-2ptas', '2 puertas'], ['weathertech-wtf250-4ptas', '4 puertas (2011-2013)']]],
+        ['weathertech-wtwk2-14-18', 'Combo Grand Cherokee WK2 negro WeatherTech', 'Año', [['weathertech-wtwk2-11-13', '2011-2013'], ['weathertech-wtwk2-14-18', '2014-2020']]],
+        ['weathertech-wtjimny2ptasauto', 'Alfombras Jimny 2 puertas 2020+ WeatherTech', 'Transmisión', [['weathertech-wtjimny2ptasauto', 'Automática'], ['weathertech-wtjimny2ptassinc', 'Sincrónica']]],
+        ['weathertech-11avmsb', 'Alfombras universales WeatherTech (4 piezas)', 'Color', [['weathertech-11avmsb', 'Negro'], ['weathertech-11avmsg', 'Gris'], ['weathertech-11avmst', 'Beige']]],
+        ['weathertech-11avmothsb', 'Alfombras universales WeatherTech con trasera corrida (3 piezas)', 'Color', [['weathertech-11avmothsb', 'Negro'], ['weathertech-11avmothsg', 'Gris'], ['weathertech-11avmothst', 'Beige']]],
+        ['weathertech-11avmcb', 'Cargoliner universal WeatherTech', 'Color', [['weathertech-11avmcb', 'Negro'], ['weathertech-11avmcg', 'Gris'], ['weathertech-11avmct', 'Beige']]],
+        ['weathertech-81cspo1bk', 'Protector de asiento para silla de bebé WeatherTech', 'Color', [['weathertech-81cspo1bk', 'Negro'], ['weathertech-81cspoigy', 'Gris'], ['weathertech-81cspoico', 'Cocoa'], ['weathertech-81cspoitn', 'Beige']]],
+        ['weathertech-8dp22ch', 'Protector de puertas traseras para perros WeatherTech negro (par)', 'Tamaño', [['weathertech-8dp22ch', '22"'], ['weathertech-8dp26ch', '26"']]],
+      ];
+      grupos.forEach(([idQueda, nombre, nomOpc, vars]) => {
+        const base = porId(idQueda);
+        const miembros = vars.map(([id, etq]) => ({ p: porId(id), etq })).filter((x) => x.p);
+        if (!base || miembros.length < 2) return;
+        const precios = {};
+        miembros.forEach(({ p, etq }) => { precios[etq] = Number(p.precio) || 0; });
+        const extras = [];
+        miembros.forEach(({ p }) => {
+          if (p === base) return;
+          // Las fotos de las variantes pasan como fotos extra (salvo WeatherTech: una sola foto de estudio)
+          if (base.marca !== 'WeatherTech') {
+            [p.foto, ...(p.fotosExtra || [])].filter(Boolean).forEach((f) => { if (f !== base.foto && !extras.includes(f)) extras.push(f); });
+          }
+          quitar.add(p.id);
+        });
+        base.nombre = nombre;
+        base.altura = '';
+        base.precio = Math.min(...Object.values(precios));
+        base.opciones = { nombre: nomOpc, valores: miembros.map((m) => m.etq), precios };
+        if (extras.length) base.fotosExtra = [...(base.fotosExtra || []), ...extras].slice(0, 7);
+        // Referencias del proveedor (solo si los productos traían SKU o piezas en la descripción)
+        const skus = miembros.map(({ p, etq }) => {
+          const ref = (String(p.descripcion || '').match(/(?:SKU|Piezas) ([^ ]+)\.$/) || [])[1];
+          return ref ? `${etq}: ${ref}` : '';
+        }).filter(Boolean);
+        base.descripcion = String(base.descripcion || '').replace(/\s*(SKU|Piezas) [^ ]+\.$/, '') + (skus.length === miembros.length ? ` Referencias — ${skus.join(' · ')}.` : '');
+      });
+      // Duplicados exactos (mismo kit, mismo vehículo y precio)
+      ['pmwtzdwplcyptap', 'ome-nitrocharger-grand-cherokee-commander'].forEach((id) => quitar.add(id));
+      // Nombres más claros
+      const renombrar = {
+        pmwtzi6brfjd0im: 'Kit de Suspensión Bilstein 5100 4Runner 2010-2024 / Prado S150',
+        pmwu5q0qsl90cvj: 'Kit de Suspensión Dobinsons MRR Land Cruiser 300',
+        pmwwczcjy8buxbn: 'Mesetas superiores (brazos de control) Old Man Emu 4Runner / FJ Cruiser / Prado S150',
+        pmwwcvbp1tb4h55: 'Mesetas superiores (brazos de control) Old Man Emu Roraima Serie 200',
+        pmwwcxzbu30stlg: 'Mesetas superiores (brazos de control) Old Man Emu Hilux Kavak / Fortuner / Hilux Revo',
+        pmwwd0wlxz2iew7: 'Mesetas superiores (brazos de control) Old Man Emu Tacoma',
+        'ome-nitrocharger-grand-cherokee-wk-06-10': 'Kit de Suspensión Nitrocharger Grand Cherokee WK 2006-2010',
+      };
+      prods.forEach((p) => { if (renombrar[p.id]) p.nombre = renombrar[p.id]; });
+      catalogo.productos = prods.filter((p) => !quitar.has(p.id));
+      // Sin foto y sin foto pendiente de aprobar → fuera
+      catalogo.productos = catalogo.productos.filter((p) => p.foto || (p.fotosExtra || []).length || sugerenciaFoto(p.id));
+      cfg.migradoLimpieza1 = true;
       guardarCatalogoLocal();
     }
 
